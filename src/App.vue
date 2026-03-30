@@ -46,6 +46,8 @@ const expandedDirectories = ref<string[]>([])
 const statusUpdatePending = ref<CaseWorkflowStatus | null>(null)
 const statusUpdateError = ref<string | null>(null)
 
+const isHomeView = computed(() => selectedProject.value === null && viewState.value === 'idle')
+
 const parsedCases = computed<ParsedCase[]>(() => {
   if (!scanResult.value) {
     return []
@@ -84,15 +86,13 @@ const visibleTreeNodes = computed(() => {
   return flattenTree(caseTree.value, new Set(expandedDirectories.value))
 })
 
-const caseStats = computed(() => {
-  return parsedCases.value.reduce(
-    (stats, testCase) => {
-      stats.total += 1
-      stats[testCase.parseStatus] += 1
-      return stats
-    },
-    { total: 0, valid: 0, partial: 0, invalid: 0 },
-  )
+const warningSummary = computed(() => {
+  const errors = scanResult.value?.errors ?? []
+  if (!errors.length) {
+    return null
+  }
+
+  return `${errors.length} warning${errors.length > 1 ? 's' : ''}`
 })
 
 watch(
@@ -111,7 +111,10 @@ watch(
       return
     }
 
-    if (!selectedCaseId.value || !cases.some((testCase) => testCase.caseId === selectedCaseId.value)) {
+    if (
+      !selectedCaseId.value ||
+      !cases.some((testCase) => testCase.caseId === selectedCaseId.value)
+    ) {
       selectedCaseId.value = cases[0].caseId
     }
   },
@@ -132,11 +135,9 @@ async function openProjectDirectory() {
       return
     }
 
-    const projectPath = selectedPath
-    selectedProject.value = projectPath
-    await scanProject(projectPath)
+    selectedProject.value = selectedPath
+    await scanProject(selectedPath)
   } catch (error) {
-    viewState.value = 'error'
     scanError.value =
       error instanceof Error ? error.message : 'Unable to choose a project directory'
   }
@@ -216,6 +217,15 @@ function detailLabelForPath(path: string) {
   }
 
   return path
+}
+
+function resetToHome() {
+  selectedProject.value = null
+  scanResult.value = null
+  scanError.value = null
+  statusUpdateError.value = null
+  selectedCaseId.value = null
+  viewState.value = 'idle'
 }
 
 function buildCaseTree(cases: ParsedCase[], rootLabel: string): DirectoryNode {
@@ -335,49 +345,53 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
 </script>
 
 <template>
-  <div class="shell">
-    <header class="hero">
-      <div class="hero__copy">
-        <p class="eyebrow">Markdown-native QA workspace</p>
-        <h1>Casebook</h1>
-        <p class="hero__summary">
-          Open any project, inspect its case tree, and drive case state transitions directly from
-          Markdown frontmatter.
+  <div class="shell" :data-screen="isHomeView ? 'home' : 'inner'">
+    <template v-if="isHomeView">
+      <main class="home">
+        <div class="home__eyebrow">Casebook</div>
+        <h1 class="home__title">
+          Quiet space
+          <br />
+          for test cases
+        </h1>
+        <p class="home__summary">
+          Open a local project and read its Markdown-native cases without leaving the codebase.
         </p>
-      </div>
+        <div class="home__actions">
+          <button class="primary-button" type="button" @click="openProjectDirectory">
+            Open Project Directory
+          </button>
+          <p class="home__caption">Looks for <code>casebook/tests</code> and an optional alias in <code>casebook/config.yml</code>.</p>
+        </div>
+        <p v-if="scanError" class="home__error">{{ scanError }}</p>
+      </main>
+    </template>
 
-      <div class="hero__actions">
-        <button class="primary-button" type="button" @click="openProjectDirectory">
-          Open Project Directory
-        </button>
-        <p class="helper-text">
-          Left panel follows <code>casebook/tests</code>. Right panel keeps metadata, body, and
-          status actions in one place.
-        </p>
-      </div>
-    </header>
-
-    <main class="workspace">
-      <section class="panel panel--status">
-        <div>
-          <p class="panel__label">Current Project</p>
-          <p class="panel__value">{{ selectedProject ?? 'No project selected yet' }}</p>
+    <template v-else>
+      <header class="toolbar">
+        <div class="toolbar__primary">
+          <button class="toolbar__brand" type="button" @click="resetToHome">Casebook</button>
+          <div class="toolbar__project">
+            <p class="toolbar__label">Project</p>
+            <p class="toolbar__path">{{ selectedProject }}</p>
+          </div>
         </div>
 
-        <div class="status-cluster">
+        <div class="toolbar__actions">
           <span class="status-pill" :data-state="viewState">
             {{
-              viewState === 'idle'
-                ? 'Waiting'
-                : viewState === 'loading'
-                  ? 'Scanning'
-                  : viewState === 'ready'
-                    ? 'Loaded'
-                    : viewState === 'invalid-project'
-                      ? 'Missing casebook/tests'
-                      : 'Error'
+              viewState === 'loading'
+                ? 'Scanning'
+                : viewState === 'ready'
+                  ? 'Loaded'
+                  : viewState === 'invalid-project'
+                    ? 'Missing casebook/tests'
+                    : 'Error'
             }}
           </span>
+          <button class="secondary-button" type="button" @click="openProjectDirectory">
+            Change Directory
+          </button>
           <button
             v-if="selectedProject"
             class="secondary-button"
@@ -387,235 +401,143 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
             Rescan
           </button>
         </div>
-      </section>
+      </header>
 
-      <section v-if="viewState === 'idle'" class="panel empty-state">
-        <p class="empty-state__eyebrow">Start here</p>
-        <h2>Select a repository or app workspace</h2>
-        <p>
-          Casebook looks for <code>casebook/tests</code> and optionally reads
-          <code>casebook/config.yml</code> to label the tree root.
-        </p>
-      </section>
+      <p v-if="warningSummary" class="inline-banner">
+        {{ warningSummary }} while reading the project.
+      </p>
 
-      <section v-else-if="viewState === 'loading'" class="panel empty-state">
-        <p class="empty-state__eyebrow">Scanning</p>
-        <h2>Reading tree structure and case metadata</h2>
-        <p>Loading Markdown files, config aliases, and current timestamps from the selected project.</p>
-      </section>
-
-      <section v-else-if="viewState === 'invalid-project'" class="panel empty-state">
-        <p class="empty-state__eyebrow">Not initialized</p>
-        <h2>This directory is not a Casebook project yet</h2>
-        <p>
-          Expected to find <code>casebook/tests</code> under the selected directory. The desktop app
-          stays read-only until a valid tests tree exists.
-        </p>
-      </section>
-
-      <section v-else-if="viewState === 'error'" class="panel empty-state empty-state--error">
-        <p class="empty-state__eyebrow">Scan failed</p>
-        <h2>Casebook could not read this project</h2>
-        <p>{{ scanError }}</p>
-      </section>
-
-      <template v-else>
-        <section class="stats-grid">
-          <article class="panel stat-card">
-            <p class="panel__label">Total Cases</p>
-            <p class="stat-card__value">{{ caseStats.total }}</p>
-          </article>
-          <article class="panel stat-card">
-            <p class="panel__label">Valid</p>
-            <p class="stat-card__value">{{ caseStats.valid }}</p>
-          </article>
-          <article class="panel stat-card">
-            <p class="panel__label">Partial</p>
-            <p class="stat-card__value">{{ caseStats.partial }}</p>
-          </article>
-          <article class="panel stat-card">
-            <p class="panel__label">Invalid</p>
-            <p class="stat-card__value">{{ caseStats.invalid }}</p>
-          </article>
-        </section>
-
-        <section v-if="scanResult?.errors.length" class="panel warnings">
-          <div class="warnings__header">
+      <main v-if="viewState === 'ready'" class="workspace">
+        <aside class="tree-panel">
+          <div class="tree-panel__header">
             <div>
-              <p class="panel__label">Scan Warnings</p>
-              <h2>{{ scanResult.errors.length }} issues found while loading the project</h2>
+              <p class="panel__label">Library</p>
+              <h2>{{ testsAlias }}</h2>
             </div>
           </div>
-          <ul class="warnings__list">
-            <li v-for="warning in scanResult.errors" :key="`${warning.path}:${warning.message}`">
-              <strong>{{ warning.path }}</strong>
-              <span>{{ warning.message }}</span>
-            </li>
-          </ul>
-        </section>
 
-        <section class="workbench">
-          <aside class="panel tree-panel">
-            <div class="tree-panel__header">
+          <div v-if="visibleTreeNodes.length" class="tree-list">
+            <button
+              v-for="node in visibleTreeNodes"
+              :key="node.id"
+              class="tree-row"
+              type="button"
+              :data-kind="node.kind"
+              :data-selected="node.kind === 'case' && node.caseId === selectedCaseId"
+              :style="{ paddingInlineStart: `${16 + node.depth * 16}px` }"
+              @click="node.kind === 'directory' ? toggleDirectory(node.path) : selectCase(node.caseId)"
+            >
+              <span class="tree-row__caret">
+                {{ node.kind === 'directory' ? (isDirectoryExpanded(node.path) ? '−' : '+') : '·' }}
+              </span>
+
+              <span class="tree-row__content">
+                <span class="tree-row__title">{{ node.name }}</span>
+                <span v-if="node.kind === 'case'" class="tree-row__subtitle">{{ node.workflowStatus }}</span>
+                <span v-else class="tree-row__subtitle">{{ detailLabelForPath(node.path) }}</span>
+              </span>
+
+              <span v-if="node.kind === 'case'" class="tree-row__meta" :data-status="node.parseStatus"></span>
+            </button>
+          </div>
+
+          <div v-else class="placeholder">
+            <p>No Markdown cases found.</p>
+          </div>
+        </aside>
+
+        <section class="detail-panel">
+          <template v-if="selectedCase">
+            <div class="detail-panel__header">
               <div>
-                <p class="panel__label">Case Tree</p>
-                <h2>{{ testsAlias }}</h2>
+                <p class="panel__label">Case</p>
+                <h2>{{ selectedCase.title }}</h2>
               </div>
-              <p class="tree-panel__summary">{{ parsedCases.length }} cases</p>
+              <div class="detail-panel__badges">
+                <span class="workflow-pill" :data-status="selectedCase.status">{{ selectedCase.status }}</span>
+                <span class="parse-pill" :data-status="selectedCase.parseStatus">{{ selectedCase.parseStatus }}</span>
+              </div>
             </div>
 
-            <div v-if="visibleTreeNodes.length" class="tree-list">
+            <dl class="meta-grid">
+              <div class="meta-item">
+                <dt>ID</dt>
+                <dd>{{ selectedCase.id }}</dd>
+              </div>
+              <div class="meta-item">
+                <dt>Platform</dt>
+                <dd>{{ selectedCase.platform }}</dd>
+              </div>
+              <div class="meta-item">
+                <dt>Priority</dt>
+                <dd>{{ selectedCase.priority ?? 'None' }}</dd>
+              </div>
+              <div class="meta-item">
+                <dt>Updated</dt>
+                <dd>{{ selectedCase.updatedAtLabel }}</dd>
+              </div>
+              <div class="meta-item">
+                <dt>Source</dt>
+                <dd>{{ selectedCase.updatedAtSource === 'filesystem' ? 'Filesystem' : 'Git' }}</dd>
+              </div>
+              <div class="meta-item">
+                <dt>Path</dt>
+                <dd>{{ selectedCase.relativePath }}</dd>
+              </div>
+            </dl>
+
+            <div class="status-switch">
               <button
-                v-for="node in visibleTreeNodes"
-                :key="node.id"
-                class="tree-row"
+                v-for="workflowStatus in caseWorkflowStatuses"
+                :key="workflowStatus"
+                class="status-switch__button"
                 type="button"
-                :data-kind="node.kind"
-                :data-selected="node.kind === 'case' && node.caseId === selectedCaseId"
-                :style="{ paddingInlineStart: `${18 + node.depth * 18}px` }"
-                @click="node.kind === 'directory' ? toggleDirectory(node.path) : selectCase(node.caseId)"
+                :data-active="workflowStatus === selectedCase.status"
+                :disabled="statusUpdatePending !== null"
+                @click="updateCaseStatus(workflowStatus)"
               >
-                <span class="tree-row__caret" :data-open="node.kind === 'directory' && isDirectoryExpanded(node.path)">
-                  {{ node.kind === 'directory' ? (isDirectoryExpanded(node.path) ? '▾' : '▸') : '•' }}
-                </span>
-
-                <span class="tree-row__content">
-                  <span class="tree-row__title">{{ node.name }}</span>
-                  <span class="tree-row__subtitle">{{ detailLabelForPath(node.path) }}</span>
-                </span>
-
-                <span v-if="node.kind === 'case'" class="tree-row__badges">
-                  <span class="workflow-pill" :data-status="node.workflowStatus">
-                    {{ node.workflowStatus }}
-                  </span>
-                  <span class="parse-pill" :data-status="node.parseStatus">
-                    {{ node.parseStatus }}
-                  </span>
-                </span>
+                {{ statusUpdatePending === workflowStatus ? 'Saving' : workflowStatus }}
               </button>
             </div>
 
-            <div v-else class="empty-table">
-              <p>No Markdown cases were found under <code>casebook/tests</code>.</p>
-            </div>
-          </aside>
+            <p v-if="statusUpdateError" class="inline-error">{{ statusUpdateError }}</p>
 
-          <section class="panel detail-panel">
-            <template v-if="selectedCase">
-              <div class="detail-panel__header">
-                <div>
-                  <p class="panel__label">Case Detail</p>
-                  <h2>{{ selectedCase.title }}</h2>
-                  <p class="detail-panel__path">{{ selectedCase.relativePath }}</p>
-                </div>
+            <ul v-if="selectedCase.parseNotes.length" class="notes-list">
+              <li v-for="note in selectedCase.parseNotes" :key="note">{{ note }}</li>
+            </ul>
 
-                <div class="detail-panel__badges">
-                  <span class="workflow-pill" :data-status="selectedCase.status">
-                    {{ selectedCase.status }}
-                  </span>
-                  <span class="parse-pill" :data-status="selectedCase.parseStatus">
-                    {{ selectedCase.parseStatus }}
-                  </span>
-                </div>
-              </div>
+            <pre class="case-body">{{ selectedCase.body || 'No body content.' }}</pre>
+          </template>
 
-              <section class="detail-section">
-                <div class="detail-grid">
-                  <article class="detail-item">
-                    <p class="panel__label">Case ID</p>
-                    <p>{{ selectedCase.id }}</p>
-                  </article>
-                  <article class="detail-item">
-                    <p class="panel__label">Platform</p>
-                    <p>{{ selectedCase.platform }}</p>
-                  </article>
-                  <article class="detail-item">
-                    <p class="panel__label">Priority</p>
-                    <p>{{ selectedCase.priority ?? 'No priority' }}</p>
-                  </article>
-                  <article class="detail-item">
-                    <p class="panel__label">Created At</p>
-                    <p>{{ selectedCase.createdAt ?? 'Not provided' }}</p>
-                  </article>
-                  <article class="detail-item">
-                    <p class="panel__label">Updated At</p>
-                    <p>{{ selectedCase.updatedAtLabel }}</p>
-                  </article>
-                  <article class="detail-item">
-                    <p class="panel__label">Timestamp Source</p>
-                    <p>
-                      {{
-                        selectedCase.updatedAtSource === 'filesystem'
-                          ? 'File timestamp fallback'
-                          : 'Git timestamp'
-                      }}
-                    </p>
-                  </article>
-                </div>
-              </section>
-
-              <section class="detail-section">
-                <div class="detail-section__header">
-                  <div>
-                    <p class="panel__label">Status Actions</p>
-                    <h3>Write current state back to frontmatter</h3>
-                  </div>
-                </div>
-
-                <div class="status-actions">
-                  <button
-                    v-for="workflowStatus in caseWorkflowStatuses"
-                    :key="workflowStatus"
-                    class="status-action"
-                    type="button"
-                    :data-active="workflowStatus === selectedCase.status"
-                    :data-status="workflowStatus"
-                    :disabled="statusUpdatePending !== null"
-                    @click="updateCaseStatus(workflowStatus)"
-                  >
-                    {{
-                      statusUpdatePending === workflowStatus ? 'Saving…' : workflowStatus
-                    }}
-                  </button>
-                </div>
-
-                <p v-if="statusUpdateError" class="inline-error">{{ statusUpdateError }}</p>
-              </section>
-
-              <section v-if="selectedCase.parseNotes.length" class="detail-section">
-                <div class="detail-section__header">
-                  <div>
-                    <p class="panel__label">Parse Notes</p>
-                    <h3>Current parse warnings</h3>
-                  </div>
-                </div>
-                <ul class="case-card__notes">
-                  <li v-for="note in selectedCase.parseNotes" :key="note">{{ note }}</li>
-                </ul>
-              </section>
-
-              <section class="detail-section">
-                <div class="detail-section__header">
-                  <div>
-                    <p class="panel__label">Markdown</p>
-                    <h3>Body content</h3>
-                  </div>
-                </div>
-                <pre class="case-body">{{ selectedCase.body || 'No body content.' }}</pre>
-              </section>
-            </template>
-
-            <div v-else class="empty-state detail-empty-state">
-              <p class="empty-state__eyebrow">No case selected</p>
-              <h2>Choose a case from the tree</h2>
-              <p>
-                The right side shows metadata, parse notes, Markdown body, and status actions for
-                the currently selected case.
-              </p>
-            </div>
-          </section>
+          <div v-else class="placeholder">
+            <p>Select a case from the tree.</p>
+          </div>
         </section>
-      </template>
-    </main>
+      </main>
+
+      <main v-else class="inner-state">
+        <div class="inner-state__body">
+          <p class="panel__label">
+            {{ viewState === 'loading' ? 'Scanning' : viewState === 'invalid-project' ? 'Unavailable' : 'Error' }}
+          </p>
+          <h2>
+            {{
+              viewState === 'loading'
+                ? 'Reading cases from the selected project'
+                : viewState === 'invalid-project'
+                  ? 'This directory is not a Casebook project'
+                  : 'Casebook could not read this project'
+            }}
+          </h2>
+          <p>
+            {{
+              viewState === 'loading'
+                ? 'Scanning Markdown files and preparing the case tree.'
+                : scanError || 'Expected to find casebook/tests under the selected directory.'
+            }}
+          </p>
+        </div>
+      </main>
+    </template>
   </div>
 </template>
