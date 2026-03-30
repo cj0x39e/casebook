@@ -4,6 +4,7 @@ title: 选择包含 casebook/tests 的项目后成功加载用例列表
 platform: desktop
 created_at: 2026-03-30
 priority: P0
+status: 已通过
 ---
 
 ## 前置条件
@@ -22,4 +23,3 @@ priority: P0
 - 状态标签从 `Scanning` 切换为 `Loaded`。
 - 页面显示统计区、告警区（如有）和测试用例列表。
 - 列表中的每一项都展示标题、相对路径、平台、优先级和更新时间。
-

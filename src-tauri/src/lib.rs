@@ -1,10 +1,13 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_yaml::{Mapping, Value};
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
     time::UNIX_EPOCH,
 };
+
+const ALLOWED_CASE_STATUSES: [&str; 4] = ["待处理", "进行中", "已通过", "已阻塞"];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,8 +33,14 @@ struct ScanResult {
     project_root: String,
     casebook_root: Option<String>,
     tests_root: Option<String>,
+    tests_alias: Option<String>,
     cases: Vec<ScannedCase>,
     errors: Vec<ScanError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CasebookConfig {
+    tests_alias: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,13 +64,29 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
 
     let casebook_root = project_root_path.join("casebook");
     let tests_root = casebook_root.join("tests");
+    let mut config_error = None;
+    let tests_alias = match read_tests_alias(&casebook_root) {
+        Ok(alias) => alias,
+        Err(error) => {
+            config_error = Some(error);
+            None
+        }
+    };
     let mut result = ScanResult {
         project_root,
         casebook_root: Some(casebook_root.to_string_lossy().into_owned()),
         tests_root: None,
+        tests_alias,
         cases: Vec::new(),
         errors: Vec::new(),
     };
+
+    if let Some(error) = config_error {
+        result.errors.push(ScanError {
+            path: casebook_root.join("config.yml").to_string_lossy().into_owned(),
+            message: error,
+        });
+    }
 
     if !tests_root.exists() || !tests_root.is_dir() {
         result.errors.push(ScanError {
@@ -115,6 +140,52 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+fn update_case_status(
+    project_root: String,
+    case_path: String,
+    status: String,
+) -> Result<ScannedCase, String> {
+    validate_case_status(&status)?;
+
+    let project_root_path = PathBuf::from(&project_root);
+    let case_path = PathBuf::from(&case_path);
+
+    if !case_path.exists() {
+        return Err("Selected case file does not exist".to_string());
+    }
+
+    if !case_path.is_file() {
+        return Err("Selected case path is not a file".to_string());
+    }
+
+    let original_content = fs::read_to_string(&case_path)
+        .map_err(|error| format!("Failed to read case file: {error}"))?;
+    let updated_content = update_case_status_in_markdown(&original_content, &status)?;
+
+    fs::write(&case_path, updated_content)
+        .map_err(|error| format!("Failed to write case file: {error}"))?;
+
+    let tests_root = project_root_path.join("casebook").join("tests");
+    let relative_path = case_path
+        .strip_prefix(&tests_root)
+        .map(normalize_path)
+        .map_err(|_| "Selected case file is outside casebook/tests".to_string())?;
+
+    let refreshed_content = fs::read_to_string(&case_path)
+        .map_err(|error| format!("Failed to reload updated case file: {error}"))?;
+    let (updated_at, updated_at_source) = get_updated_at(&project_root_path, &case_path);
+
+    Ok(ScannedCase {
+        case_id: relative_path.clone(),
+        relative_path,
+        absolute_path: case_path.to_string_lossy().into_owned(),
+        content: refreshed_content,
+        updated_at,
+        updated_at_source,
+    })
 }
 
 fn collect_markdown_files(root: &Path, files: &mut Vec<PathBuf>, errors: &mut Vec<ScanError>) {
@@ -201,6 +272,83 @@ fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, String> {
+    let config_path = casebook_root.join("config.yml");
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&config_path)
+        .map_err(|error| format!("Failed to read config: {error}"))?;
+    let config: CasebookConfig =
+        serde_yaml::from_str(&content).map_err(|error| format!("Invalid config.yml: {error}"))?;
+
+    Ok(config.tests_alias.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    }))
+}
+
+fn validate_case_status(status: &str) -> Result<(), String> {
+    if ALLOWED_CASE_STATUSES.contains(&status) {
+        Ok(())
+    } else {
+        Err(format!("Unsupported case status: {status}"))
+    }
+}
+
+fn update_case_status_in_markdown(content: &str, status: &str) -> Result<String, String> {
+    let normalized = content.replace("\r\n", "\n");
+
+    match split_frontmatter(&normalized)? {
+        Some((frontmatter, body)) => {
+            let mut mapping = parse_frontmatter_mapping(&frontmatter)?;
+            mapping.insert(
+                Value::String("status".to_string()),
+                Value::String(status.to_string()),
+            );
+            let serialized =
+                serde_yaml::to_string(&Value::Mapping(mapping)).map_err(|error| error.to_string())?;
+            Ok(format!("---\n{}---\n{}", serialized, body))
+        }
+        None => Ok(format!("---\nstatus: {}\n---\n{}", status, normalized)),
+    }
+}
+
+fn split_frontmatter(content: &str) -> Result<Option<(String, String)>, String> {
+    if !content.starts_with("---\n") {
+        return Ok(None);
+    }
+
+    let rest = &content[4..];
+    if let Some(index) = rest.find("\n---\n") {
+        let frontmatter = rest[..index].to_string();
+        let body = rest[index + 5..].to_string();
+        return Ok(Some((frontmatter, body)));
+    }
+
+    if let Some(frontmatter) = rest.strip_suffix("\n---") {
+        return Ok(Some((frontmatter.to_string(), String::new())));
+    }
+
+    Err("Invalid frontmatter block".to_string())
+}
+
+fn parse_frontmatter_mapping(frontmatter: &str) -> Result<Mapping, String> {
+    let parsed: Value =
+        serde_yaml::from_str(frontmatter).map_err(|error| format!("Invalid frontmatter YAML: {error}"))?;
+
+    match parsed {
+        Value::Mapping(mapping) => Ok(mapping),
+        Value::Null => Ok(Mapping::new()),
+        _ => Err("Frontmatter must be a YAML object".to_string()),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -215,7 +363,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![scan_casebook])
+        .invoke_handler(tauri::generate_handler![scan_casebook, update_case_status])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

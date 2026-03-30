@@ -4,6 +4,7 @@ title: 扫描告警区展示目录或文件读取失败信息
 platform: desktop
 created_at: 2026-03-30
 priority: P2
+status: 已阻塞
 ---
 
 ## 前置条件
@@ -21,4 +22,3 @@ priority: P2
 - 页面展示 Scan Warnings 区域。
 - 每条告警都包含路径和错误信息。
 - 其他可读取的 Markdown 用例仍继续被扫描。
-

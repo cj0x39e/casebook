@@ -4,6 +4,7 @@ title: 合法 Markdown 用例显示为 valid
 platform: desktop
 created_at: 2026-03-30
 priority: P0
+status: 进行中
 ---
 
 ## 前置条件
@@ -20,4 +21,3 @@ priority: P0
 
 - 用例状态显示为 `valid`。
 - 卡片不显示缺失字段或缺失章节的提示。
-

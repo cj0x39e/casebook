@@ -2,6 +2,8 @@ import { parse as parseYaml } from 'yaml'
 
 export type UpdatedAtSource = 'git' | 'filesystem'
 export type ParseStatus = 'valid' | 'partial' | 'invalid'
+export const caseWorkflowStatuses = ['待处理', '进行中', '已通过', '已阻塞'] as const
+export type CaseWorkflowStatus = (typeof caseWorkflowStatuses)[number]
 
 export interface ScanError {
   path: string
@@ -21,17 +23,22 @@ export interface RawScanResult {
   projectRoot: string
   casebookRoot: string | null
   testsRoot: string | null
+  testsAlias: string | null
   cases: RawScannedCase[]
   errors: ScanError[]
 }
 
 export interface ParsedCase extends RawScannedCase {
+  id: string
   title: string
   platform: string
   priority: string | null
+  createdAt: string | null
+  status: CaseWorkflowStatus
   parseStatus: ParseStatus
   parseNotes: string[]
   updatedAtLabel: string
+  body: string
 }
 
 const requiredSections = ['前置条件', '步骤', '预期结果']
@@ -76,6 +83,13 @@ function parseFrontmatter(content: string) {
   }
 }
 
+function isCaseWorkflowStatus(value: unknown): value is CaseWorkflowStatus {
+  return (
+    typeof value === 'string' &&
+    caseWorkflowStatuses.includes(value.trim() as CaseWorkflowStatus)
+  )
+}
+
 export function formatUpdatedAt(updatedAt: number | null) {
   if (!updatedAt) {
     return 'Unavailable'
@@ -114,26 +128,36 @@ export function parseCase(rawCase: RawScannedCase): ParsedCase {
 
     return {
       ...rawCase,
+      id: isNonEmptyString(data.id) ? data.id.trim() : rawCase.caseId,
       title: isNonEmptyString(data.title) ? data.title.trim() : fallbackTitle,
       platform: isNonEmptyString(data.platform)
         ? data.platform.trim()
         : fallbackPlatform,
       priority: isNonEmptyString(data.priority) ? data.priority.trim() : null,
+      createdAt: isNonEmptyString(data.created_at) ? data.created_at.trim() : null,
+      status: isCaseWorkflowStatus(data.status)
+        ? (data.status.trim() as CaseWorkflowStatus)
+        : '待处理',
       parseStatus: parseNotes.length === 0 ? 'valid' : 'partial',
       parseNotes,
       updatedAtLabel: formatUpdatedAt(rawCase.updatedAt),
+      body: parsed.content.trim(),
     }
   } catch (error) {
     return {
       ...rawCase,
+      id: rawCase.caseId,
       title: fallbackTitle,
       platform: fallbackPlatform,
       priority: null,
+      createdAt: null,
+      status: '待处理',
       parseStatus: 'invalid',
       parseNotes: [
         error instanceof Error ? error.message : 'Unable to parse Markdown file',
       ],
       updatedAtLabel: formatUpdatedAt(rawCase.updatedAt),
+      body: rawCase.content.trim(),
     }
   }
 }
