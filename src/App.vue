@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import type { ParsedCase, RawScanResult } from './lib/casebook'
 import { parseCase } from './lib/casebook'
 
@@ -34,11 +35,16 @@ async function openProjectDirectory() {
   scanError.value = null
 
   try {
-    const projectPath = await invoke<string | null>('select_project_directory')
-    if (!projectPath) {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+    })
+
+    if (selectedPath === null || Array.isArray(selectedPath)) {
       return
     }
 
+    const projectPath = selectedPath
     selectedProject.value = projectPath
     await scanProject(projectPath)
   } catch (error) {

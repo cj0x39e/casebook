@@ -5,8 +5,6 @@ use std::{
     process::Command,
     time::UNIX_EPOCH,
 };
-use tauri::AppHandle;
-use tauri_plugin_dialog::DialogExt;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,19 +39,6 @@ struct ScanResult {
 enum UpdatedAtSource {
     Git,
     Filesystem,
-}
-
-#[tauri::command]
-fn select_project_directory(app: AppHandle) -> Result<Option<String>, String> {
-    let Some(path) = app.dialog().file().blocking_pick_folder() else {
-        return Ok(None);
-    };
-
-    let path = path
-        .into_path()
-        .map_err(|_| "The selected folder could not be converted to a local path".to_string())?;
-
-    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -230,10 +215,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            select_project_directory,
-            scan_casebook
-        ])
+        .invoke_handler(tauri::generate_handler![scan_casebook])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
