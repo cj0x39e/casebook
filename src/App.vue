@@ -33,6 +33,7 @@ interface CaseFileNode {
   name: string
   depth: number
   caseId: string
+  status: CaseWorkflowStatus
 }
 
 const ROOT_TREE_PATH = '__tests_root__'
@@ -45,10 +46,14 @@ const selectedCaseId = ref<string | null>(null)
 const expandedDirectories = ref<string[]>([])
 const statusUpdatePending = ref<CaseWorkflowStatus | null>(null)
 const statusUpdateError = ref<string | null>(null)
+const activeTreeStatusFilter = ref<CaseWorkflowStatus | 'all'>('all')
 const detailContentView = ref<DetailContentView>('rendered')
 const showParseNotes = ref(false)
 const showSettingsPanel = ref(false)
 const showSummaryMeta = ref(false)
+const showTreeFilterPanel = ref(false)
+const treeFilterButtonRef = ref<HTMLElement | null>(null)
+const treeFilterPanelRef = ref<HTMLElement | null>(null)
 const parseNotesTriggerRef = ref<HTMLElement | null>(null)
 const parseNotesTooltipRef = ref<HTMLElement | null>(null)
 const settingsButtonRef = ref<HTMLElement | null>(null)
@@ -95,6 +100,10 @@ const selectedCaseRenderedHtml = computed(() => {
 
 const testsAlias = computed(() => scanResult.value?.testsAlias?.trim() || 'Tests')
 
+const treeFilterLabel = computed(() =>
+  activeTreeStatusFilter.value === 'all' ? 'Filter' : `Filter: ${activeTreeStatusFilter.value}`,
+)
+
 const caseTree = computed<DirectoryNode | null>(() => {
   if (!parsedCases.value.length) {
     return null
@@ -108,7 +117,11 @@ const visibleTreeNodes = computed(() => {
     return []
   }
 
-  return flattenTree(caseTree.value, new Set(expandedDirectories.value))
+  return flattenTree(
+    caseTree.value,
+    new Set(expandedDirectories.value),
+    activeTreeStatusFilter.value,
+  )
 })
 
 const warningSummary = computed(() => {
@@ -118,22 +131,6 @@ const warningSummary = computed(() => {
   }
 
   return `${errors.length} warning${errors.length > 1 ? 's' : ''} while reading the project.`
-})
-
-const toolbarStatusLabel = computed(() => {
-  if (viewState.value === 'loading') {
-    return 'Scanning'
-  }
-
-  if (viewState.value === 'invalid-project') {
-    return 'Missing casebook/tests'
-  }
-
-  if (viewState.value === 'error') {
-    return 'Error'
-  }
-
-  return null
 })
 
 watch(
@@ -166,6 +163,10 @@ watch(selectedCaseId, () => {
   detailContentView.value = 'rendered'
   showParseNotes.value = false
   showSummaryMeta.value = false
+})
+
+watch(activeTreeStatusFilter, () => {
+  showTreeFilterPanel.value = false
 })
 
 watch(showParseNotes, async (visible) => {
@@ -325,6 +326,23 @@ function detailLabelForPath(path: string) {
   return path
 }
 
+function treeRowIndent(node: TreeNode) {
+  if (node.kind === 'directory') {
+    return 16 + node.depth * 16
+  }
+
+  return 28 + Math.min(node.depth, 2) * 8
+}
+
+function caseDirectoryLabel(path: string) {
+  const segments = path.split('/')
+  if (segments.length <= 1) {
+    return 'Root'
+  }
+
+  return segments.slice(0, -1).join('/')
+}
+
 function buildFixedTopRightPosition(anchor: HTMLElement, offset: number) {
   const rect = anchor.getBoundingClientRect()
   const margin = 28
@@ -405,16 +423,13 @@ function handlePointerDown(event: PointerEvent) {
   ) {
     showSummaryMeta.value = false
   }
-}
 
-function resetToHome() {
-  selectedProject.value = null
-  scanResult.value = null
-  scanError.value = null
-  statusUpdateError.value = null
-  selectedCaseId.value = null
-  showSettingsPanel.value = false
-  viewState.value = 'idle'
+  if (
+    showTreeFilterPanel.value &&
+    !isEventInside(event, treeFilterButtonRef.value, treeFilterPanelRef.value)
+  ) {
+    showTreeFilterPanel.value = false
+  }
 }
 
 function buildCaseTree(cases: ParsedCase[], rootLabel: string): DirectoryNode {
@@ -461,6 +476,7 @@ function buildCaseTree(cases: ParsedCase[], rootLabel: string): DirectoryNode {
       name: testCase.title,
       depth: currentDirectory.depth + 1,
       caseId: testCase.caseId,
+      status: testCase.status,
     })
   }
 
@@ -484,7 +500,11 @@ function sortTree(directory: DirectoryNode) {
   }
 }
 
-function flattenTree(directory: DirectoryNode, expanded: Set<string>): TreeNode[] {
+function flattenTree(
+  directory: DirectoryNode,
+  expanded: Set<string>,
+  statusFilter: CaseWorkflowStatus | 'all',
+): TreeNode[] {
   const nodes: TreeNode[] = [directory]
 
   if (!expanded.has(directory.path)) {
@@ -492,16 +512,29 @@ function flattenTree(directory: DirectoryNode, expanded: Set<string>): TreeNode[
   }
 
   for (const child of directory.children) {
-    nodes.push(child)
     if (child.kind === 'directory') {
-      nodes.push(...flattenTreeChildren(child, expanded))
+      if (directoryHasMatchingCases(child, statusFilter)) {
+        nodes.push(child)
+        if (expanded.has(child.path)) {
+          nodes.push(...flattenTreeChildren(child, expanded, statusFilter))
+        }
+      }
+      continue
+    }
+
+    if (statusFilter === 'all' || child.status === statusFilter) {
+      nodes.push(child)
     }
   }
 
   return nodes
 }
 
-function flattenTreeChildren(directory: DirectoryNode, expanded: Set<string>): TreeNode[] {
+function flattenTreeChildren(
+  directory: DirectoryNode,
+  expanded: Set<string>,
+  statusFilter: CaseWorkflowStatus | 'all',
+): TreeNode[] {
   const nodes: TreeNode[] = []
 
   if (!expanded.has(directory.path)) {
@@ -509,13 +542,42 @@ function flattenTreeChildren(directory: DirectoryNode, expanded: Set<string>): T
   }
 
   for (const child of directory.children) {
-    nodes.push(child)
     if (child.kind === 'directory') {
-      nodes.push(...flattenTreeChildren(child, expanded))
+      if (directoryHasMatchingCases(child, statusFilter)) {
+        nodes.push(child)
+        if (expanded.has(child.path)) {
+          nodes.push(...flattenTreeChildren(child, expanded, statusFilter))
+        }
+      }
+      continue
+    }
+
+    if (statusFilter === 'all' || child.status === statusFilter) {
+      nodes.push(child)
     }
   }
 
   return nodes
+}
+
+function directoryHasMatchingCases(
+  directory: DirectoryNode,
+  statusFilter: CaseWorkflowStatus | 'all',
+): boolean {
+  for (const child of directory.children) {
+    if (child.kind === 'directory') {
+      if (directoryHasMatchingCases(child, statusFilter)) {
+        return true
+      }
+      continue
+    }
+
+    if (statusFilter === 'all' || child.status === statusFilter) {
+      return true
+    }
+  }
+
+  return false
 }
 
 function collectDirectoryPaths(directory: DirectoryNode): string[] {
@@ -558,13 +620,6 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
     </template>
 
     <template v-else>
-      <header class="toolbar">
-        <button class="toolbar__brand" type="button" @click="resetToHome">Casebook</button>
-        <span v-if="toolbarStatusLabel" class="status-pill" :data-state="viewState">
-          {{ toolbarStatusLabel }}
-        </span>
-      </header>
-
       <p v-if="warningSummary" class="inline-banner">
         {{ warningSummary }}
       </p>
@@ -572,9 +627,41 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
       <main v-if="viewState === 'ready'" class="workspace">
         <aside class="tree-panel">
           <div class="tree-panel__header">
-            <div>
+            <div class="tree-panel__header-main">
               <p class="panel__label">Library</p>
               <h2>{{ testsAlias }}</h2>
+            </div>
+            <div class="tree-filter">
+              <button
+                ref="treeFilterButtonRef"
+                class="tree-filter__button"
+                type="button"
+                :aria-expanded="showTreeFilterPanel"
+                @click="showTreeFilterPanel = !showTreeFilterPanel"
+              >
+                {{ treeFilterLabel }}
+              </button>
+
+              <div v-if="showTreeFilterPanel" ref="treeFilterPanelRef" class="tree-filter__panel">
+                <button
+                  class="tree-filter__option"
+                  type="button"
+                  :data-active="activeTreeStatusFilter === 'all'"
+                  @click="activeTreeStatusFilter = 'all'"
+                >
+                  全部
+                </button>
+                <button
+                  v-for="workflowStatus in caseWorkflowStatuses"
+                  :key="workflowStatus"
+                  class="tree-filter__option"
+                  type="button"
+                  :data-active="activeTreeStatusFilter === workflowStatus"
+                  @click="activeTreeStatusFilter = workflowStatus"
+                >
+                  {{ workflowStatus }}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -587,24 +674,35 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                 type="button"
                 :data-kind="node.kind"
                 :data-selected="node.kind === 'case' && node.caseId === selectedCaseId"
-                :style="{ paddingInlineStart: `${16 + node.depth * 16}px` }"
+                :style="{ paddingInlineStart: `${treeRowIndent(node)}px` }"
                 @click="node.kind === 'directory' ? toggleDirectory(node.path) : selectCase(node.caseId)"
               >
                 <span class="tree-row__caret">
-                  {{ node.kind === 'directory' ? (isDirectoryExpanded(node.path) ? '−' : '+') : '·' }}
+                  {{ node.kind === 'directory' ? (isDirectoryExpanded(node.path) ? '−' : '+') : '' }}
                 </span>
 
                 <span class="tree-row__content">
-                  <span class="tree-row__title">{{ node.name }}</span>
+                  <span class="tree-row__title">
+                    <span
+                      v-if="node.kind === 'case'"
+                      class="tree-row__status-dot"
+                      :data-status="node.status"
+                      aria-hidden="true"
+                    />
+                    <span>{{ node.name }}</span>
+                  </span>
                   <span v-if="node.kind === 'directory'" class="tree-row__subtitle">
                     {{ detailLabelForPath(node.path) }}
+                  </span>
+                  <span v-else class="tree-row__subtitle">
+                    {{ caseDirectoryLabel(node.path) }}
                   </span>
                 </span>
               </button>
             </div>
 
             <div v-else class="placeholder">
-              <p>No Markdown cases found.</p>
+              <p>{{ activeTreeStatusFilter === 'all' ? 'No Markdown cases found.' : '当前筛选条件下没有用例。' }}</p>
             </div>
           </div>
 
