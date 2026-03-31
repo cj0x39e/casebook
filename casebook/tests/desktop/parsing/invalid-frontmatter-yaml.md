@@ -1,8 +1,6 @@
 ---
-id: CB-PARSE-004
 title: frontmatter 语法损坏时显示 invalid
 platform: desktop
-created_at: 2026-03-30
 priority: P0
 broken: [unterminated
 status: 进行中

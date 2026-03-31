@@ -1,8 +1,6 @@
 ---
-id: CB-STATE-004
 title: 统计区反映 valid partial invalid 的真实数量
 platform: desktop
-created_at: 2026-03-30
 priority: P1
 ---
 

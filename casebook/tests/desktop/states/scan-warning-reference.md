@@ -1,8 +1,6 @@
 ---
-id: CB-STATE-005
 title: 扫描告警区展示目录或文件读取失败信息
 platform: desktop
-created_at: 2026-03-30
 priority: P2
 status: blocked
 ---

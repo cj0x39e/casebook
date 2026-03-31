@@ -1,8 +1,6 @@
 ---
-id: CB-SCAN-004
 title: 已选择项目后可通过 Rescan 重新扫描
 platform: desktop
-created_at: 2026-03-30
 priority: P1
 ---
 

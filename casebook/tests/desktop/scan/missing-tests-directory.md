@@ -1,8 +1,6 @@
 ---
-id: CB-SCAN-003
 title: 选择未初始化 Casebook 的目录时显示缺失提示
 platform: desktop
-created_at: 2026-03-30
 priority: P1
 ---
 

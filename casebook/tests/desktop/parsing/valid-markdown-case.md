@@ -1,8 +1,6 @@
 ---
-id: CB-PARSE-001
 title: 合法 Markdown 用例显示为 valid
 platform: desktop
-created_at: 2026-03-30
 priority: P0
 status: todo
 ---

@@ -1,8 +1,6 @@
 ---
-id: CB-STATE-001
 title: 递归扫描多级子目录中的 Markdown 用例
 platform: desktop
-created_at: 2026-03-30
 priority: P1
 ---
 

@@ -1,8 +1,6 @@
 ---
-id: CB-STATE-003
 title: Git 不可用时回退到文件系统修改时间
 platform: desktop
-created_at: 2026-03-30
 priority: P2
 ---
 

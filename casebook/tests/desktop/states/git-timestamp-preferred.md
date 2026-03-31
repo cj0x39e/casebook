@@ -1,8 +1,6 @@
 ---
-id: CB-STATE-002
 title: Git 可用时优先展示 Git 更新时间
 platform: desktop
-created_at: 2026-03-30
 priority: P1
 ---
 

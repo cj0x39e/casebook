@@ -1,8 +1,6 @@
 ---
-id: CB-SCAN-002
 title: 选择包含 casebook/tests 的项目后成功加载用例列表
 platform: desktop
-created_at: 2026-03-30
 priority: P0
 status: pass
 ---
