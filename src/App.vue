@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import DOMPurify from 'dompurify'
@@ -48,6 +48,16 @@ const statusUpdateError = ref<string | null>(null)
 const detailContentView = ref<DetailContentView>('rendered')
 const showParseNotes = ref(false)
 const showSettingsPanel = ref(false)
+const showSummaryMeta = ref(false)
+const parseNotesTriggerRef = ref<HTMLElement | null>(null)
+const parseNotesTooltipRef = ref<HTMLElement | null>(null)
+const settingsButtonRef = ref<HTMLElement | null>(null)
+const settingsPanelRef = ref<HTMLElement | null>(null)
+const summaryMoreTriggerRef = ref<HTMLElement | null>(null)
+const summaryMorePopoverRef = ref<HTMLElement | null>(null)
+const parseNotesTooltipStyle = ref<Record<string, string>>({})
+const settingsPanelStyle = ref<Record<string, string>>({})
+const summaryMorePopoverStyle = ref<Record<string, string>>({})
 const markdownRenderer = new MarkdownIt({
   html: false,
   linkify: true,
@@ -155,6 +165,46 @@ watch(
 watch(selectedCaseId, () => {
   detailContentView.value = 'rendered'
   showParseNotes.value = false
+  showSummaryMeta.value = false
+})
+
+watch(showParseNotes, async (visible) => {
+  if (!visible) {
+    return
+  }
+
+  await nextTick()
+  updateParseNotesTooltipPosition()
+})
+
+watch(showSettingsPanel, async (visible) => {
+  if (!visible) {
+    return
+  }
+
+  await nextTick()
+  updateSettingsPanelPosition()
+})
+
+watch(showSummaryMeta, async (visible) => {
+  if (!visible) {
+    return
+  }
+
+  await nextTick()
+  updateSummaryMorePopoverPosition()
+})
+
+onMounted(() => {
+  window.addEventListener('resize', handleViewportChange)
+  window.addEventListener('scroll', handleViewportChange, true)
+  document.addEventListener('pointerdown', handlePointerDown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleViewportChange)
+  window.removeEventListener('scroll', handleViewportChange, true)
+  document.removeEventListener('pointerdown', handlePointerDown)
 })
 
 async function openProjectDirectory() {
@@ -255,6 +305,88 @@ function detailLabelForPath(path: string) {
   }
 
   return path
+}
+
+function buildFixedTopRightPosition(anchor: HTMLElement, offset: number) {
+  const rect = anchor.getBoundingClientRect()
+  const margin = 28
+
+  return {
+    top: `${rect.bottom + offset}px`,
+    right: `${Math.max(margin, window.innerWidth - rect.right)}px`,
+  }
+}
+
+function updateParseNotesTooltipPosition() {
+  if (!parseNotesTriggerRef.value) {
+    return
+  }
+
+  parseNotesTooltipStyle.value = buildFixedTopRightPosition(parseNotesTriggerRef.value, 8)
+}
+
+function updateSummaryMorePopoverPosition() {
+  if (!summaryMoreTriggerRef.value) {
+    return
+  }
+
+  summaryMorePopoverStyle.value = buildFixedTopRightPosition(summaryMoreTriggerRef.value, 10)
+}
+
+function updateSettingsPanelPosition() {
+  if (!settingsButtonRef.value) {
+    return
+  }
+
+  const rect = settingsButtonRef.value.getBoundingClientRect()
+  const margin = 28
+
+  settingsPanelStyle.value = {
+    left: `${Math.max(margin, rect.left)}px`,
+    bottom: `${Math.max(16, window.innerHeight - rect.top + 10)}px`,
+  }
+}
+
+function handleViewportChange() {
+  if (showParseNotes.value) {
+    updateParseNotesTooltipPosition()
+  }
+
+  if (showSettingsPanel.value) {
+    updateSettingsPanelPosition()
+  }
+
+  if (showSummaryMeta.value) {
+    updateSummaryMorePopoverPosition()
+  }
+}
+
+function isEventInside(event: PointerEvent, ...elements: Array<HTMLElement | null>) {
+  const target = event.target
+  return target instanceof Node && elements.some((element) => element?.contains(target))
+}
+
+function handlePointerDown(event: PointerEvent) {
+  if (
+    showParseNotes.value &&
+    !isEventInside(event, parseNotesTriggerRef.value, parseNotesTooltipRef.value)
+  ) {
+    showParseNotes.value = false
+  }
+
+  if (
+    showSettingsPanel.value &&
+    !isEventInside(event, settingsButtonRef.value, settingsPanelRef.value)
+  ) {
+    showSettingsPanel.value = false
+  }
+
+  if (
+    showSummaryMeta.value &&
+    !isEventInside(event, summaryMoreTriggerRef.value, summaryMorePopoverRef.value)
+  ) {
+    showSummaryMeta.value = false
+  }
 }
 
 function resetToHome() {
@@ -460,6 +592,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
 
           <div class="tree-panel__footer">
             <button
+              ref="settingsButtonRef"
               class="tree-panel__settings-button"
               type="button"
               :aria-expanded="showSettingsPanel"
@@ -468,33 +601,6 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
               <span class="tree-panel__settings-icon">⌘</span>
               <span>系统设置</span>
             </button>
-
-            <div v-if="showSettingsPanel" class="settings-panel">
-              <section class="settings-panel__section">
-                <p class="panel__label">Project</p>
-                <p class="settings-panel__path">{{ selectedProject }}</p>
-                <div class="settings-panel__actions">
-                  <button class="secondary-button" type="button" @click="openProjectDirectory">
-                    Change Directory
-                  </button>
-                  <button
-                    v-if="selectedProject"
-                    class="secondary-button"
-                    type="button"
-                    @click="scanProject(selectedProject)"
-                  >
-                    Rescan
-                  </button>
-                </div>
-              </section>
-
-              <section class="settings-panel__section">
-                <p class="panel__label">Casebook</p>
-                <p class="settings-panel__placeholder">
-                  AI key、用户名和项目偏好会收进这里。
-                </p>
-              </section>
-            </div>
           </div>
         </aside>
 
@@ -520,37 +626,20 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                     </span>
                     <button
                       v-if="selectedCase.parseNotes.length"
+                      ref="parseNotesTriggerRef"
                       class="parse-notes-trigger"
                       type="button"
                       aria-label="查看解析提示"
                       @focus="showParseNotes = true"
-                      @blur="showParseNotes = false"
                     >
                       i
                     </button>
-                    <div
-                      v-if="selectedCase.parseNotes.length && showParseNotes"
-                      class="parse-notes-tooltip"
-                      role="tooltip"
-                    >
-                      <p class="parse-notes-tooltip__title">Parse Notes</p>
-                      <ul class="parse-notes-tooltip__list">
-                        <li v-for="note in selectedCase.parseNotes" :key="note">{{ note }}</li>
-                      </ul>
-                    </div>
                   </div>
                 </div>
               </div>
 
               <div class="case-summary__meta">
-                <div class="summary-keyline">
-                  <span class="summary-field__label">ID</span>
-                  <span class="summary-field__value summary-field__value--mono">
-                    {{ selectedCase.id }}
-                  </span>
-                </div>
-
-                <div class="summary-inline">
+                <div class="summary-primary">
                   <span class="summary-token">
                     <span class="summary-token__label">Platform</span>
                     <span class="summary-token__value">{{ selectedCase.platform }}</span>
@@ -559,47 +648,22 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                     <span class="summary-token__label">Priority</span>
                     <span class="summary-token__value">{{ selectedCase.priority ?? 'None' }}</span>
                   </span>
-                  <span class="summary-token">
-                    <span class="summary-token__label">Created</span>
-                    <span class="summary-token__value">
-                      {{ selectedCase.createdAt ?? 'Unavailable' }}
-                    </span>
-                  </span>
-                  <span class="summary-token">
-                    <span class="summary-token__label">Updated</span>
-                    <span class="summary-token__value">{{ selectedCase.updatedAtLabel }}</span>
-                  </span>
-                  <span class="summary-token">
-                    <span class="summary-token__label">Source</span>
-                    <span class="summary-token__value">{{ selectedCase.summary.sourceLabel }}</span>
-                  </span>
-                </div>
 
-                <p class="summary-pathline">
-                  <span class="summary-pathline__label">Path</span>
-                  <span class="summary-pathline__value">
-                    {{ selectedCase.summary.pathLabel }}
-                  </span>
-                </p>
+                  <div class="summary-more">
+                    <button
+                      ref="summaryMoreTriggerRef"
+                      class="summary-more__trigger"
+                      type="button"
+                      aria-label="查看更多摘要信息"
+                      :aria-expanded="showSummaryMeta"
+                      @click="showSummaryMeta = !showSummaryMeta"
+                    >
+                      More
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div class="case-summary__footer">
-                <div class="status-switch">
-                  <button
-                    v-for="workflowStatus in caseWorkflowStatuses"
-                    :key="workflowStatus"
-                    class="status-switch__button"
-                    type="button"
-                    :data-active="workflowStatus === selectedCase.status"
-                    :disabled="statusUpdatePending !== null"
-                    @click="updateCaseStatus(workflowStatus)"
-                  >
-                    {{ statusUpdatePending === workflowStatus ? 'Saving' : workflowStatus }}
-                  </button>
-                </div>
-
-                <p v-if="statusUpdateError" class="inline-error">{{ statusUpdateError }}</p>
-              </div>
             </div>
 
             <div class="detail-view-switch">
@@ -631,6 +695,24 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                 selectedCase.content
               }}</pre>
             </section>
+
+            <div class="detail-panel__actions">
+              <div class="status-switch">
+                <button
+                  v-for="workflowStatus in caseWorkflowStatuses"
+                  :key="workflowStatus"
+                  class="status-switch__button"
+                  type="button"
+                  :data-active="workflowStatus === selectedCase.status"
+                  :disabled="statusUpdatePending !== null"
+                  @click="updateCaseStatus(workflowStatus)"
+                >
+                  {{ statusUpdatePending === workflowStatus ? 'Saving' : workflowStatus }}
+                </button>
+              </div>
+
+              <p v-if="statusUpdateError" class="inline-error">{{ statusUpdateError }}</p>
+            </div>
           </template>
 
           <div v-else class="placeholder">
@@ -670,4 +752,93 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
       </main>
     </template>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="selectedCase?.parseNotes.length && showParseNotes"
+      ref="parseNotesTooltipRef"
+      class="parse-notes-tooltip"
+      :style="parseNotesTooltipStyle"
+      role="tooltip"
+    >
+      <p class="parse-notes-tooltip__title">Parse Notes</p>
+      <ul class="parse-notes-tooltip__list">
+        <li v-for="note in selectedCase.parseNotes" :key="note">{{ note }}</li>
+      </ul>
+    </div>
+
+    <div
+      v-if="showSummaryMeta && selectedCase"
+      ref="summaryMorePopoverRef"
+      class="summary-more__popover"
+      :style="summaryMorePopoverStyle"
+      role="dialog"
+    >
+      <div class="summary-more__grid">
+        <div class="summary-more__item">
+          <span class="summary-more__label">ID</span>
+          <span class="summary-more__value summary-more__value--mono">
+            {{ selectedCase.id }}
+          </span>
+        </div>
+        <div class="summary-more__item">
+          <span class="summary-more__label">Created</span>
+          <span class="summary-more__value">
+            {{ selectedCase.createdAt ?? 'Unavailable' }}
+          </span>
+        </div>
+        <div class="summary-more__item">
+          <span class="summary-more__label">Updated</span>
+          <span class="summary-more__value">
+            {{ selectedCase.updatedAtLabel }}
+          </span>
+        </div>
+        <div class="summary-more__item">
+          <span class="summary-more__label">Source</span>
+          <span class="summary-more__value">
+            {{ selectedCase.summary.sourceLabel }}
+          </span>
+        </div>
+      </div>
+
+      <div class="summary-more__path">
+        <span class="summary-more__label">Path</span>
+        <span class="summary-more__value">
+          {{ selectedCase.summary.pathLabel }}
+        </span>
+      </div>
+    </div>
+
+    <div
+      v-if="showSettingsPanel"
+      ref="settingsPanelRef"
+      class="settings-panel"
+      :style="settingsPanelStyle"
+    >
+      <section class="settings-panel__section">
+        <p class="panel__label">Project</p>
+        <p class="settings-panel__path">{{ selectedProject }}</p>
+        <div class="settings-panel__actions">
+          <button class="secondary-button" type="button" @click="openProjectDirectory">
+            Change Directory
+          </button>
+          <button
+            v-if="selectedProject"
+            class="secondary-button"
+            type="button"
+            @click="scanProject(selectedProject)"
+          >
+            Rescan
+          </button>
+        </div>
+      </section>
+
+      <section class="settings-panel__section">
+        <p class="panel__label">Casebook</p>
+        <p class="settings-panel__placeholder">
+          AI key、用户名和项目偏好会收进这里。
+        </p>
+      </section>
+    </div>
+  </Teleport>
 </template>
