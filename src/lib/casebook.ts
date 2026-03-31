@@ -2,7 +2,7 @@ import { parse as parseYaml } from 'yaml'
 
 export type UpdatedAtSource = 'git' | 'filesystem'
 export type ParseStatus = 'valid' | 'partial' | 'invalid'
-export const caseWorkflowStatuses = ['待处理', '进行中', '已通过', '已阻塞'] as const
+export const caseWorkflowStatuses = ['todo', 'in_progress', 'pass', 'blocked'] as const
 export type CaseWorkflowStatus = (typeof caseWorkflowStatuses)[number]
 
 export interface ScanError {
@@ -15,6 +15,7 @@ export interface RawScannedCase {
   relativePath: string
   absolutePath: string
   content: string
+  createdAt: number | null
   updatedAt: number | null
   updatedAtSource: UpdatedAtSource
 }
@@ -38,7 +39,7 @@ export interface ParsedCase extends RawScannedCase {
   title: string
   platform: string
   priority: string | null
-  createdAt: string | null
+  createdAtLabel: string
   status: CaseWorkflowStatus
   parseStatus: ParseStatus
   parseNotes: string[]
@@ -117,6 +118,30 @@ function isCaseWorkflowStatus(value: unknown): value is CaseWorkflowStatus {
   )
 }
 
+function normalizeCaseWorkflowStatus(value: unknown): CaseWorkflowStatus | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const normalized = value.trim()
+  if (!normalized) {
+    return null
+  }
+
+  if (isCaseWorkflowStatus(normalized)) {
+    return normalized
+  }
+
+  const legacyStatusMap: Record<string, CaseWorkflowStatus> = {
+    待处理: 'todo',
+    进行中: 'in_progress',
+    已通过: 'pass',
+    已阻塞: 'blocked',
+  }
+
+  return legacyStatusMap[normalized] ?? null
+}
+
 export function formatUpdatedAt(updatedAt: number | null) {
   if (!updatedAt) {
     return 'Unavailable'
@@ -138,7 +163,7 @@ export function parseCase(rawCase: RawScannedCase): ParsedCase {
   const data = frontmatter.data
   const parseNotes = [...frontmatter.errors]
 
-  for (const key of ['id', 'title', 'platform', 'created_at']) {
+  for (const key of ['title', 'platform']) {
     if (!isNonEmptyString(data[key])) {
       parseNotes.push(`Missing frontmatter field: ${key}`)
     }
@@ -152,14 +177,12 @@ export function parseCase(rawCase: RawScannedCase): ParsedCase {
 
   return {
     ...rawCase,
-    id: isNonEmptyString(data.id) ? data.id.trim() : rawCase.caseId,
+    id: rawCase.relativePath,
     title: isNonEmptyString(data.title) ? data.title.trim() : fallbackTitle,
     platform: isNonEmptyString(data.platform) ? data.platform.trim() : fallbackPlatform,
     priority: isNonEmptyString(data.priority) ? data.priority.trim() : null,
-    createdAt: isNonEmptyString(data.created_at) ? data.created_at.trim() : null,
-    status: isCaseWorkflowStatus(data.status)
-      ? (data.status.trim() as CaseWorkflowStatus)
-      : '待处理',
+    createdAtLabel: formatUpdatedAt(rawCase.createdAt),
+    status: normalizeCaseWorkflowStatus(data.status) ?? 'todo',
     parseStatus,
     parseNotes,
     updatedAtLabel: formatUpdatedAt(rawCase.updatedAt),

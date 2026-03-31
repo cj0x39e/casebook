@@ -5,6 +5,7 @@ platform: desktop
 created_at: 2026-03-30
 priority: P0
 broken: [unterminated
+status: 进行中
 ---
 
 ## 前置条件
@@ -20,4 +21,3 @@ broken: [unterminated
 
 - 用例状态显示为 `invalid`。
 - 解析备注展示 YAML 解析失败信息。
-

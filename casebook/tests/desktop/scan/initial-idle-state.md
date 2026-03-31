@@ -4,6 +4,7 @@ title: 首次进入应用时显示等待选择项目的空状态
 platform: desktop
 created_at: 2026-03-30
 priority: P1
+status: pass
 ---
 
 ## 前置条件

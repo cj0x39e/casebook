@@ -2,6 +2,7 @@
 id: CB-PARSE-005
 created_at: 2026-03-30
 priority: P2
+status: todo
 ---
 
 ## 前置条件

@@ -3,6 +3,7 @@ id: CB-PARSE-002
 platform: desktop
 created_at: 2026-03-30
 priority: P1
+status: 进行中
 ---
 
 ## 前置条件

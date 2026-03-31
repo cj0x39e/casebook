@@ -4,6 +4,7 @@ title: 缺少预期结果章节时显示 partial
 platform: desktop
 created_at: 2026-03-30
 priority: P1
+status: in_progress
 ---
 
 ## 前置条件

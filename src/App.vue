@@ -318,29 +318,20 @@ function extractErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-function detailLabelForPath(path: string) {
-  if (path === ROOT_TREE_PATH) {
-    return scanResult.value?.testsRoot ?? 'casebook/tests'
-  }
-
-  return path
-}
-
 function treeRowIndent(node: TreeNode) {
-  if (node.kind === 'directory') {
-    return 16 + node.depth * 16
-  }
-
-  return 28 + Math.min(node.depth, 2) * 8
+  return node.kind === 'directory' ? 10 : 22
 }
 
-function caseDirectoryLabel(path: string) {
-  const segments = path.split('/')
-  if (segments.length <= 1) {
-    return 'Root'
+function treeNodeTooltip(node: TreeNode) {
+  if (node.kind === 'directory') {
+    if (node.path === ROOT_TREE_PATH) {
+      return scanResult.value?.testsRoot ?? 'casebook/tests'
+    }
+
+    return node.path
   }
 
-  return segments.slice(0, -1).join('/')
+  return `${node.name}\n${node.path}`
 }
 
 function buildFixedTopRightPosition(anchor: HTMLElement, offset: number) {
@@ -505,11 +496,7 @@ function flattenTree(
   expanded: Set<string>,
   statusFilter: CaseWorkflowStatus | 'all',
 ): TreeNode[] {
-  const nodes: TreeNode[] = [directory]
-
-  if (!expanded.has(directory.path)) {
-    return nodes
-  }
+  const nodes: TreeNode[] = []
 
   for (const child of directory.children) {
     if (child.kind === 'directory') {
@@ -673,8 +660,10 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                 class="tree-row"
                 type="button"
                 :data-kind="node.kind"
+                :data-depth="node.depth"
                 :data-selected="node.kind === 'case' && node.caseId === selectedCaseId"
                 :style="{ paddingInlineStart: `${treeRowIndent(node)}px` }"
+                :title="treeNodeTooltip(node)"
                 @click="node.kind === 'directory' ? toggleDirectory(node.path) : selectCase(node.caseId)"
               >
                 <span class="tree-row__caret">
@@ -690,12 +679,6 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                       aria-hidden="true"
                     />
                     <span>{{ node.name }}</span>
-                  </span>
-                  <span v-if="node.kind === 'directory'" class="tree-row__subtitle">
-                    {{ detailLabelForPath(node.path) }}
-                  </span>
-                  <span v-else class="tree-row__subtitle">
-                    {{ caseDirectoryLabel(node.path) }}
                   </span>
                 </span>
               </button>
@@ -725,32 +708,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
             <div class="case-summary">
               <div class="case-summary__header">
                 <div class="case-summary__headline">
-                  <p class="panel__label">Case Summary</p>
                   <h2>{{ selectedCase.title }}</h2>
-                </div>
-                <div class="detail-panel__badges">
-                  <span class="workflow-pill" :data-status="selectedCase.status">
-                    {{ selectedCase.status }}
-                  </span>
-                  <div
-                    class="parse-status-group"
-                    @mouseenter="showParseNotes = true"
-                    @mouseleave="showParseNotes = false"
-                  >
-                    <span class="parse-pill" :data-status="selectedCase.parseStatus">
-                      {{ selectedCase.parseStatus }}
-                    </span>
-                    <button
-                      v-if="selectedCase.parseNotes.length"
-                      ref="parseNotesTriggerRef"
-                      class="parse-notes-trigger"
-                      type="button"
-                      aria-label="查看解析提示"
-                      @focus="showParseNotes = true"
-                    >
-                      i
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -900,7 +858,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
         <div class="summary-more__item">
           <span class="summary-more__label">Created</span>
           <span class="summary-more__value">
-            {{ selectedCase.createdAt ?? 'Unavailable' }}
+            {{ selectedCase.createdAtLabel }}
           </span>
         </div>
         <div class="summary-more__item">

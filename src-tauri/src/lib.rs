@@ -7,7 +7,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-const ALLOWED_CASE_STATUSES: [&str; 4] = ["待处理", "进行中", "已通过", "已阻塞"];
+const ALLOWED_CASE_STATUSES: [&str; 4] = ["todo", "in_progress", "pass", "blocked"];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +23,7 @@ struct ScannedCase {
     relative_path: String,
     absolute_path: String,
     content: String,
+    created_at: Option<u64>,
     updated_at: Option<u64>,
     updated_at_source: UpdatedAtSource,
 }
@@ -127,6 +128,7 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
             }
         };
 
+        let created_at = git_created_at(&project_root_path, &file_path);
         let (updated_at, updated_at_source) = get_updated_at(&project_root_path, &file_path);
 
         result.cases.push(ScannedCase {
@@ -134,6 +136,7 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
             relative_path,
             absolute_path,
             content,
+            created_at,
             updated_at,
             updated_at_source,
         });
@@ -148,7 +151,7 @@ fn update_case_status(
     case_path: String,
     status: String,
 ) -> Result<ScannedCase, String> {
-    validate_case_status(&status)?;
+    let normalized_status = validate_case_status(&status)?;
 
     let project_root_path = PathBuf::from(&project_root);
     let case_path = PathBuf::from(&case_path);
@@ -163,7 +166,7 @@ fn update_case_status(
 
     let original_content = fs::read_to_string(&case_path)
         .map_err(|error| format!("Failed to read case file: {error}"))?;
-    let updated_content = update_case_status_in_markdown(&original_content, &status)?;
+    let updated_content = update_case_status_in_markdown(&original_content, normalized_status)?;
 
     fs::write(&case_path, updated_content)
         .map_err(|error| format!("Failed to write case file: {error}"))?;
@@ -176,6 +179,7 @@ fn update_case_status(
 
     let refreshed_content = fs::read_to_string(&case_path)
         .map_err(|error| format!("Failed to reload updated case file: {error}"))?;
+    let created_at = git_created_at(&project_root_path, &case_path);
     let (updated_at, updated_at_source) = get_updated_at(&project_root_path, &case_path);
 
     Ok(ScannedCase {
@@ -183,6 +187,7 @@ fn update_case_status(
         relative_path,
         absolute_path: case_path.to_string_lossy().into_owned(),
         content: refreshed_content,
+        created_at,
         updated_at,
         updated_at_source,
     })
@@ -261,6 +266,29 @@ fn git_updated_at(project_root: &Path, file_path: &Path) -> Option<u64> {
     Some(seconds.saturating_mul(1000))
 }
 
+fn git_created_at(project_root: &Path, file_path: &Path) -> Option<u64> {
+    let relative_path = file_path.strip_prefix(project_root).ok()?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(["log", "--follow", "--format=%ct", "--"])
+        .arg(relative_path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let timestamps = String::from_utf8(output.stdout).ok()?;
+    let first_seen = timestamps
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())?;
+    let seconds = first_seen.trim().parse::<u64>().ok()?;
+    Some(seconds.saturating_mul(1000))
+}
+
 fn filesystem_updated_at(file_path: &Path) -> Option<u64> {
     let metadata = fs::metadata(file_path).ok()?;
     let modified = metadata.modified().ok()?;
@@ -293,22 +321,37 @@ fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, String> {
     }))
 }
 
-fn validate_case_status(status: &str) -> Result<(), String> {
-    if ALLOWED_CASE_STATUSES.contains(&status) {
-        Ok(())
+fn normalize_case_status(status: &str) -> Option<&'static str> {
+    match status.trim() {
+        "todo" | "待处理" => Some("todo"),
+        "in_progress" | "进行中" => Some("in_progress"),
+        "pass" | "已通过" => Some("pass"),
+        "blocked" | "已阻塞" => Some("blocked"),
+        _ => None,
+    }
+}
+
+fn validate_case_status(status: &str) -> Result<&'static str, String> {
+    let normalized = normalize_case_status(status)
+        .ok_or_else(|| format!("Unsupported case status: {status}"))?;
+
+    if ALLOWED_CASE_STATUSES.contains(&normalized) {
+        Ok(normalized)
     } else {
         Err(format!("Unsupported case status: {status}"))
     }
 }
 
 fn update_case_status_in_markdown(content: &str, status: &str) -> Result<String, String> {
+    let normalized_status = validate_case_status(status)?;
+
     match split_frontmatter(content)? {
         Some((frontmatter, body)) => {
             match parse_frontmatter_mapping(&frontmatter) {
                 Ok(mut mapping) => {
                     mapping.insert(
                         Value::String("status".to_string()),
-                        Value::String(status.to_string()),
+                        Value::String(normalized_status.to_string()),
                     );
                     let serialized = serde_yaml::to_string(&Value::Mapping(mapping))
                         .map_err(|error| error.to_string())?;
@@ -316,12 +359,13 @@ fn update_case_status_in_markdown(content: &str, status: &str) -> Result<String,
                     Ok(format!("---\n{}---\n{}", serialized, body))
                 }
                 Err(_) => {
-                    let patched_frontmatter = update_status_in_raw_frontmatter(&frontmatter, status);
+                    let patched_frontmatter =
+                        update_status_in_raw_frontmatter(&frontmatter, normalized_status);
                     Ok(format!("---\n{}---\n{}", patched_frontmatter, body))
                 }
             }
         }
-        None => Ok(format!("---\nstatus: {}\n---\n\n{}", status, content)),
+        None => Ok(format!("---\nstatus: {}\n---\n\n{}", normalized_status, content)),
     }
 }
 
@@ -395,10 +439,10 @@ mod tests {
 
     #[test]
     fn updates_status_in_valid_frontmatter() {
-        let content = "---\ntitle: Example\nstatus: 待处理\n---\n\nBody\n";
-        let updated = update_case_status_in_markdown(content, "已通过").unwrap();
+        let content = "---\ntitle: Example\nstatus: todo\n---\n\nBody\n";
+        let updated = update_case_status_in_markdown(content, "pass").unwrap();
 
-        assert!(updated.contains("status: 已通过"));
+        assert!(updated.contains("status: pass"));
         assert!(updated.contains("title: Example"));
         assert!(updated.ends_with("---\n\nBody\n"));
     }
@@ -406,29 +450,38 @@ mod tests {
     #[test]
     fn patches_status_in_invalid_frontmatter_without_rewriting_other_fields() {
         let content = "---\nid: CB-PARSE-004\nbroken: [unterminated\n---\n\nBody\n";
-        let updated = update_case_status_in_markdown(content, "已阻塞").unwrap();
+        let updated = update_case_status_in_markdown(content, "blocked").unwrap();
 
         assert!(updated.contains("broken: [unterminated"));
-        assert!(updated.contains("status: 已阻塞"));
+        assert!(updated.contains("status: blocked"));
         assert!(updated.ends_with("---\n\nBody\n"));
     }
 
     #[test]
     fn replaces_existing_top_level_status_in_invalid_frontmatter() {
-        let content = "---\nstatus: 待处理\nbroken: [unterminated\n---\n\nBody\n";
-        let updated = update_case_status_in_markdown(content, "进行中").unwrap();
+        let content = "---\nstatus: todo\nbroken: [unterminated\n---\n\nBody\n";
+        let updated = update_case_status_in_markdown(content, "in_progress").unwrap();
 
-        assert!(updated.contains("status: 进行中"));
-        assert!(!updated.contains("status: 待处理"));
+        assert!(updated.contains("status: in_progress"));
+        assert!(!updated.contains("status: todo"));
         assert!(updated.contains("broken: [unterminated"));
     }
 
     #[test]
     fn returns_error_for_unclosed_frontmatter() {
-        let content = "---\ntitle: Example\nstatus: 待处理\nBody\n";
-        let error = update_case_status_in_markdown(content, "已通过").unwrap_err();
+        let content = "---\ntitle: Example\nstatus: todo\nBody\n";
+        let error = update_case_status_in_markdown(content, "pass").unwrap_err();
 
         assert_eq!(error, "Invalid frontmatter block");
+    }
+
+    #[test]
+    fn normalizes_legacy_chinese_status_to_english() {
+        let content = "---\ntitle: Example\nstatus: 待处理\n---\n\nBody\n";
+        let updated = update_case_status_in_markdown(content, "进行中").unwrap();
+
+        assert!(updated.contains("status: in_progress"));
+        assert!(!updated.contains("status: 待处理"));
     }
 }
 
