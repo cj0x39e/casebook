@@ -36,7 +36,21 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          node -e "const fs=require('fs'); const tag=process.env.TAG_NAME; const expected=tag.replace(/^v/, ''); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')); const actual=config.version; if (actual !== expected) { console.error(`Tag ${tag} does not match src-tauri/tauri.conf.json version ${actual}`); process.exit(1); } console.log(`Release tag ${tag} matches app version ${actual}`);"
+          node <<'EOF'
+          const fs = require('fs')
+
+          const tag = process.env.TAG_NAME
+          const expected = tag.replace(/^v/, '')
+          const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'))
+          const actual = config.version
+
+          if (actual !== expected) {
+            console.error(`Tag ${tag} does not match src-tauri/tauri.conf.json version ${actual}`)
+            process.exit(1)
+          }
+
+          console.log(`Release tag ${tag} matches app version ${actual}`)
+          EOF
 
       - name: Install frontend dependencies
         run: npm ci
