@@ -302,29 +302,62 @@ fn validate_case_status(status: &str) -> Result<(), String> {
 }
 
 fn update_case_status_in_markdown(content: &str, status: &str) -> Result<String, String> {
-    let normalized = content.replace("\r\n", "\n");
-
-    match split_frontmatter(&normalized)? {
+    match split_frontmatter(content)? {
         Some((frontmatter, body)) => {
-            let mut mapping = parse_frontmatter_mapping(&frontmatter)?;
-            mapping.insert(
-                Value::String("status".to_string()),
-                Value::String(status.to_string()),
-            );
-            let serialized =
-                serde_yaml::to_string(&Value::Mapping(mapping)).map_err(|error| error.to_string())?;
-            Ok(format!("---\n{}---\n{}", serialized, body))
+            match parse_frontmatter_mapping(&frontmatter) {
+                Ok(mut mapping) => {
+                    mapping.insert(
+                        Value::String("status".to_string()),
+                        Value::String(status.to_string()),
+                    );
+                    let serialized = serde_yaml::to_string(&Value::Mapping(mapping))
+                        .map_err(|error| error.to_string())?;
+                    // serde_yaml adds a trailing newline, so we don't need an extra one
+                    Ok(format!("---\n{}---\n{}", serialized, body))
+                }
+                Err(_) => {
+                    let patched_frontmatter = update_status_in_raw_frontmatter(&frontmatter, status);
+                    Ok(format!("---\n{}---\n{}", patched_frontmatter, body))
+                }
+            }
         }
-        None => Ok(format!("---\nstatus: {}\n---\n{}", status, normalized)),
+        None => Ok(format!("---\nstatus: {}\n---\n\n{}", status, content)),
     }
 }
 
+fn update_status_in_raw_frontmatter(frontmatter: &str, status: &str) -> String {
+    let mut lines = Vec::new();
+    let mut replaced = false;
+
+    for line in frontmatter.lines() {
+        let trimmed = line.trim_start();
+        let indent_len = line.len() - trimmed.len();
+        let is_top_level_status = indent_len == 0 && trimmed.starts_with("status:");
+
+        if is_top_level_status {
+            lines.push(format!("status: {status}"));
+            replaced = true;
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+
+    if !replaced {
+        lines.push(format!("status: {status}"));
+    }
+
+    lines.join("\n")
+}
+
 fn split_frontmatter(content: &str) -> Result<Option<(String, String)>, String> {
-    if !content.starts_with("---\n") {
+    // Handle both LF and CRLF line endings
+    let normalized = content.replace("\r\n", "\n");
+
+    if !normalized.starts_with("---\n") {
         return Ok(None);
     }
 
-    let rest = &content[4..];
+    let rest = &normalized[4..];
     if let Some(index) = rest.find("\n---\n") {
         let frontmatter = rest[..index].to_string();
         let body = rest[index + 5..].to_string();
@@ -333,6 +366,13 @@ fn split_frontmatter(content: &str) -> Result<Option<(String, String)>, String> 
 
     if let Some(frontmatter) = rest.strip_suffix("\n---") {
         return Ok(Some((frontmatter.to_string(), String::new())));
+    }
+
+    // Handle case where closing --- is at the end without trailing newline
+    if let Some(index) = rest.find("\n---") {
+        let frontmatter = rest[..index].to_string();
+        let body = rest[index + 4..].to_string();
+        return Ok(Some((frontmatter, body)));
     }
 
     Err("Invalid frontmatter block".to_string())
@@ -346,6 +386,49 @@ fn parse_frontmatter_mapping(frontmatter: &str) -> Result<Mapping, String> {
         Value::Mapping(mapping) => Ok(mapping),
         Value::Null => Ok(Mapping::new()),
         _ => Err("Frontmatter must be a YAML object".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::update_case_status_in_markdown;
+
+    #[test]
+    fn updates_status_in_valid_frontmatter() {
+        let content = "---\ntitle: Example\nstatus: 待处理\n---\n\nBody\n";
+        let updated = update_case_status_in_markdown(content, "已通过").unwrap();
+
+        assert!(updated.contains("status: 已通过"));
+        assert!(updated.contains("title: Example"));
+        assert!(updated.ends_with("---\n\nBody\n"));
+    }
+
+    #[test]
+    fn patches_status_in_invalid_frontmatter_without_rewriting_other_fields() {
+        let content = "---\nid: CB-PARSE-004\nbroken: [unterminated\n---\n\nBody\n";
+        let updated = update_case_status_in_markdown(content, "已阻塞").unwrap();
+
+        assert!(updated.contains("broken: [unterminated"));
+        assert!(updated.contains("status: 已阻塞"));
+        assert!(updated.ends_with("---\n\nBody\n"));
+    }
+
+    #[test]
+    fn replaces_existing_top_level_status_in_invalid_frontmatter() {
+        let content = "---\nstatus: 待处理\nbroken: [unterminated\n---\n\nBody\n";
+        let updated = update_case_status_in_markdown(content, "进行中").unwrap();
+
+        assert!(updated.contains("status: 进行中"));
+        assert!(!updated.contains("status: 待处理"));
+        assert!(updated.contains("broken: [unterminated"));
+    }
+
+    #[test]
+    fn returns_error_for_unclosed_frontmatter() {
+        let content = "---\ntitle: Example\nstatus: 待处理\nBody\n";
+        let error = update_case_status_in_markdown(content, "已通过").unwrap_err();
+
+        assert_eq!(error, "Invalid frontmatter block");
     }
 }
 

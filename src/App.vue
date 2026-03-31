@@ -292,11 +292,29 @@ async function updateCaseStatus(nextStatus: CaseWorkflowStatus) {
       ),
     }
   } catch (error) {
-    statusUpdateError.value =
-      error instanceof Error ? error.message : 'Unable to update case status'
+    statusUpdateError.value = extractErrorMessage(error, 'Unable to update case status')
   } finally {
     statusUpdatePending.value = null
   }
+}
+
+function extractErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  if (error && typeof error === 'object') {
+    const message = Reflect.get(error, 'message')
+    if (typeof message === 'string' && message.trim()) {
+      return message
+    }
+  }
+
+  return fallback
 }
 
 function detailLabelForPath(path: string) {
