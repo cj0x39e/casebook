@@ -1,5 +1,9 @@
 # Casebook
 
+<p align="center">
+  <img src="./src-tauri/icons/icon.png" alt="Casebook logo" width="160" height="160" />
+</p>
+
 Casebook is a desktop app for browsing and maintaining Markdown-native test cases that live
 inside your repository.
 
