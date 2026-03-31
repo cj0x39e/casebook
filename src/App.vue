@@ -598,7 +598,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
             Open Project Directory
           </button>
           <p class="home__caption">
-            Looks for <code>casebook/tests</code> and an optional alias in
+            Creates <code>casebook/tests</code> when missing and reads the alias from
             <code>casebook/config.yml</code>.
           </p>
         </div>
@@ -819,7 +819,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
             {{
               viewState === 'loading'
                 ? 'Scanning Markdown files and preparing a structured case detail view.'
-                : scanError || 'Expected to find casebook/tests under the selected directory.'
+                : scanError || 'Casebook could not prepare this project for scanning.'
             }}
           </p>
         </div>

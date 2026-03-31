@@ -8,6 +8,27 @@ use std::{
 };
 
 const ALLOWED_CASE_STATUSES: [&str; 4] = ["todo", "in_progress", "pass", "blocked"];
+const DEFAULT_TESTS_ALIAS: &str = "用例库";
+const DEFAULT_CONFIG_CONTENT: &str = "tests_alias: 用例库\n";
+const DEFAULT_AGENTS_CONTENT: &str = r#"# Casebook 规范
+
+## 目录约定
+
+- 所有用例统一存放在 `casebook/tests/`
+- Casebook 只扫描 `casebook/tests/` 下的 `.md` 文件
+
+## Frontmatter
+
+- 必填字段：`title`、`platform`
+- 可选字段：`priority`、`status`
+- `status` 合法值：`todo`、`in_progress`、`pass`、`blocked`
+
+## 正文结构
+
+- 推荐使用 `## 前置条件`
+- 推荐使用 `## 步骤`
+- 推荐使用 `## 预期结果`
+"#;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +85,8 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
     }
 
     let casebook_root = project_root_path.join("casebook");
+    ensure_casebook_skeleton(&project_root_path)?;
+
     let tests_root = casebook_root.join("tests");
     let mut config_error = None;
     let tests_alias = match read_tests_alias(&casebook_root) {
@@ -87,14 +110,6 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
             path: casebook_root.join("config.yml").to_string_lossy().into_owned(),
             message: error,
         });
-    }
-
-    if !tests_root.exists() || !tests_root.is_dir() {
-        result.errors.push(ScanError {
-            path: tests_root.to_string_lossy().into_owned(),
-            message: "Missing casebook/tests directory".to_string(),
-        });
-        return Ok(result);
     }
 
     result.tests_root = Some(tests_root.to_string_lossy().into_owned());
@@ -300,6 +315,66 @@ fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn ensure_casebook_skeleton(project_root: &Path) -> Result<(), String> {
+    let casebook_root = project_root.join("casebook");
+    let tests_root = casebook_root.join("tests");
+    let config_path = casebook_root.join("config.yml");
+    let agents_path = casebook_root.join("AGENTS.md");
+
+    ensure_directory(&casebook_root, "casebook root")?;
+    ensure_directory(&tests_root, "casebook tests directory")?;
+    ensure_file_with_content(&config_path, DEFAULT_CONFIG_CONTENT, "casebook config")?;
+    ensure_file_with_content(&agents_path, DEFAULT_AGENTS_CONTENT, "casebook agents spec")?;
+
+    Ok(())
+}
+
+fn ensure_directory(path: &Path, label: &str) -> Result<(), String> {
+    if path.exists() {
+        if path.is_dir() {
+            return Ok(());
+        }
+
+        return Err(format!(
+            "{} exists but is not a directory: {}",
+            label,
+            path.to_string_lossy()
+        ));
+    }
+
+    fs::create_dir_all(path).map_err(|error| {
+        format!(
+            "Failed to create {} at {}: {}",
+            label,
+            path.to_string_lossy(),
+            error
+        )
+    })
+}
+
+fn ensure_file_with_content(path: &Path, content: &str, label: &str) -> Result<(), String> {
+    if path.exists() {
+        if path.is_file() {
+            return Ok(());
+        }
+
+        return Err(format!(
+            "{} exists but is not a file: {}",
+            label,
+            path.to_string_lossy()
+        ));
+    }
+
+    fs::write(path, content).map_err(|error| {
+        format!(
+            "Failed to create {} at {}: {}",
+            label,
+            path.to_string_lossy(),
+            error
+        )
+    })
+}
+
 fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, String> {
     let config_path = casebook_root.join("config.yml");
     if !config_path.exists() {
@@ -318,7 +393,7 @@ fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, String> {
         } else {
             Some(trimmed)
         }
-    }))
+    }).or(Some(DEFAULT_TESTS_ALIAS.to_string())))
 }
 
 fn normalize_case_status(status: &str) -> Option<&'static str> {
@@ -435,7 +510,45 @@ fn parse_frontmatter_mapping(frontmatter: &str) -> Result<Mapping, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::update_case_status_in_markdown;
+    use super::{scan_casebook, update_case_status_in_markdown, DEFAULT_AGENTS_CONTENT, DEFAULT_CONFIG_CONTENT};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    struct TempProjectDir {
+        path: PathBuf,
+    }
+
+    impl TempProjectDir {
+        fn new() -> Self {
+            let unique = format!(
+                "casebook-test-{}-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+            );
+            let path = std::env::temp_dir().join(unique);
+            fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempProjectDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 
     #[test]
     fn updates_status_in_valid_frontmatter() {
@@ -482,6 +595,65 @@ mod tests {
 
         assert!(updated.contains("status: in_progress"));
         assert!(!updated.contains("status: 待处理"));
+    }
+
+    #[test]
+    fn scan_casebook_bootstraps_missing_casebook_directory() {
+        let project = TempProjectDir::new();
+
+        let result = scan_casebook(project.path().to_string_lossy().into_owned()).unwrap();
+
+        let casebook_root = project.path().join("casebook");
+        let tests_root = casebook_root.join("tests");
+        let config_path = casebook_root.join("config.yml");
+        let agents_path = casebook_root.join("AGENTS.md");
+
+        assert!(casebook_root.is_dir());
+        assert!(tests_root.is_dir());
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), DEFAULT_CONFIG_CONTENT);
+        assert_eq!(fs::read_to_string(&agents_path).unwrap(), DEFAULT_AGENTS_CONTENT);
+        assert_eq!(result.tests_root, Some(tests_root.to_string_lossy().into_owned()));
+        assert_eq!(result.tests_alias, Some("用例库".to_string()));
+        assert!(result.cases.is_empty());
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn scan_casebook_only_backfills_missing_casebook_files() {
+        let project = TempProjectDir::new();
+        let casebook_root = project.path().join("casebook");
+        let tests_root = casebook_root.join("tests");
+        let config_path = casebook_root.join("config.yml");
+        let agents_path = casebook_root.join("AGENTS.md");
+        let existing_agents = "# Existing project conventions\n";
+
+        fs::create_dir_all(&tests_root).unwrap();
+        fs::write(&agents_path, existing_agents).unwrap();
+
+        let result = scan_casebook(project.path().to_string_lossy().into_owned()).unwrap();
+
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), DEFAULT_CONFIG_CONTENT);
+        assert_eq!(fs::read_to_string(&agents_path).unwrap(), existing_agents);
+        assert_eq!(result.tests_alias, Some("用例库".to_string()));
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn scan_casebook_preserves_existing_config_and_alias() {
+        let project = TempProjectDir::new();
+        let casebook_root = project.path().join("casebook");
+        let tests_root = casebook_root.join("tests");
+        let config_path = casebook_root.join("config.yml");
+        let custom_config = "tests_alias: 自定义用例\n";
+
+        fs::create_dir_all(&tests_root).unwrap();
+        fs::write(&config_path, custom_config).unwrap();
+
+        let result = scan_casebook(project.path().to_string_lossy().into_owned()).unwrap();
+
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), custom_config);
+        assert_eq!(result.tests_alias, Some("自定义用例".to_string()));
+        assert!(result.errors.is_empty());
     }
 }
 
