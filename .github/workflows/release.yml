@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-tauri:
+    name: Build and Release (${{ matrix.platform }})
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify tag matches app version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          node -e "const fs=require('fs'); const tag=process.env.TAG_NAME; const expected=tag.replace(/^v/, ''); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')); const actual=config.version; if (actual !== expected) { console.error(`Tag ${tag} does not match src-tauri/tauri.conf.json version ${actual}`); process.exit(1); } console.log(`Release tag ${tag} matches app version ${actual}`);"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and upload release assets
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Casebook ${{ github.ref_name }}
+          releaseBody: See the assets to download and install this release.
+          releaseDraft: false
+          prerelease: false
