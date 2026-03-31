@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish, for example v0.1.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,6 +18,8 @@ jobs:
   publish-tauri:
     name: Build and Release (${{ matrix.platform }})
     runs-on: ${{ matrix.platform }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -34,13 +41,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Verify tag matches app version
-        env:
-          TAG_NAME: ${{ github.ref_name }}
         run: |
           node <<'EOF'
           const fs = require('fs')
 
-          const tag = process.env.TAG_NAME
+          const tag = process.env.RELEASE_TAG
           const expected = tag.replace(/^v/, '')
           const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'))
           const actual = config.version
@@ -61,8 +66,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Casebook ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Casebook ${{ env.RELEASE_TAG }}
           releaseBody: See the assets to download and install this release.
           releaseDraft: false
           prerelease: false
