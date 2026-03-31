@@ -33,8 +33,17 @@ const DEFAULT_AGENTS_CONTENT: &str = r#"# Casebook 规范
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScanError {
+    code: String,
     path: String,
-    message: String,
+    detail: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppError {
+    code: String,
+    detail: Option<String>,
+    path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,16 +81,50 @@ enum UpdatedAtSource {
     Filesystem,
 }
 
+type AppResult<T> = Result<T, AppError>;
+
+fn app_error(code: &str) -> AppError {
+    AppError {
+        code: code.to_string(),
+        detail: None,
+        path: None,
+    }
+}
+
+fn app_error_with_detail(code: &str, detail: impl Into<String>) -> AppError {
+    AppError {
+        code: code.to_string(),
+        detail: Some(detail.into()),
+        path: None,
+    }
+}
+
+fn app_error_with_path(code: &str, path: impl Into<String>) -> AppError {
+    AppError {
+        code: code.to_string(),
+        detail: None,
+        path: Some(path.into()),
+    }
+}
+
+fn scan_error(code: &str, path: impl Into<String>, detail: Option<String>) -> ScanError {
+    ScanError {
+        code: code.to_string(),
+        path: path.into(),
+        detail,
+    }
+}
+
 #[tauri::command]
-fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
+fn scan_casebook(project_root: String) -> AppResult<ScanResult> {
     let project_root_path = PathBuf::from(&project_root);
 
     if !project_root_path.exists() {
-        return Err("Selected project directory does not exist".to_string());
+        return Err(app_error("project.not_found"));
     }
 
     if !project_root_path.is_dir() {
-        return Err("Selected path is not a directory".to_string());
+        return Err(app_error("project.not_directory"));
     }
 
     let casebook_root = project_root_path.join("casebook");
@@ -106,10 +149,7 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
     };
 
     if let Some(error) = config_error {
-        result.errors.push(ScanError {
-            path: casebook_root.join("config.yml").to_string_lossy().into_owned(),
-            message: error,
-        });
+        result.errors.push(error);
     }
 
     result.tests_root = Some(tests_root.to_string_lossy().into_owned());
@@ -124,8 +164,9 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
             Ok(path) => normalize_path(path),
             Err(error) => {
                 result.errors.push(ScanError {
+                    code: "scan.derive_case_path_failed".to_string(),
                     path: absolute_path.clone(),
-                    message: format!("Failed to derive case path: {error}"),
+                    detail: Some(error.to_string()),
                 });
                 continue;
             }
@@ -136,8 +177,9 @@ fn scan_casebook(project_root: String) -> Result<ScanResult, String> {
             Ok(content) => content,
             Err(error) => {
                 result.errors.push(ScanError {
+                    code: "scan.read_file_failed".to_string(),
                     path: absolute_path.clone(),
-                    message: format!("Failed to read file: {error}"),
+                    detail: Some(error.to_string()),
                 });
                 continue;
             }
@@ -165,35 +207,37 @@ fn update_case_status(
     project_root: String,
     case_path: String,
     status: String,
-) -> Result<ScannedCase, String> {
-    let normalized_status = validate_case_status(&status)?;
+) -> AppResult<ScannedCase> {
+    let normalized_status = validate_case_status(&status)
+        .map_err(|_| app_error_with_detail("case_status.unsupported", status.clone()))?;
 
     let project_root_path = PathBuf::from(&project_root);
     let case_path = PathBuf::from(&case_path);
 
     if !case_path.exists() {
-        return Err("Selected case file does not exist".to_string());
+        return Err(app_error("case.not_found"));
     }
 
     if !case_path.is_file() {
-        return Err("Selected case path is not a file".to_string());
+        return Err(app_error("case.not_file"));
     }
 
     let original_content = fs::read_to_string(&case_path)
-        .map_err(|error| format!("Failed to read case file: {error}"))?;
-    let updated_content = update_case_status_in_markdown(&original_content, normalized_status)?;
+        .map_err(|error| app_error_with_detail("case.read_failed", error.to_string()))?;
+    let updated_content = update_case_status_in_markdown(&original_content, normalized_status)
+        .map_err(|error| map_update_case_status_error(&error, &status))?;
 
     fs::write(&case_path, updated_content)
-        .map_err(|error| format!("Failed to write case file: {error}"))?;
+        .map_err(|error| app_error_with_detail("case.write_failed", error.to_string()))?;
 
     let tests_root = project_root_path.join("casebook").join("tests");
     let relative_path = case_path
         .strip_prefix(&tests_root)
         .map(normalize_path)
-        .map_err(|_| "Selected case file is outside casebook/tests".to_string())?;
+        .map_err(|_| app_error("case.outside_tests_root"))?;
 
     let refreshed_content = fs::read_to_string(&case_path)
-        .map_err(|error| format!("Failed to reload updated case file: {error}"))?;
+        .map_err(|error| app_error_with_detail("case.reload_failed", error.to_string()))?;
     let created_at = git_created_at(&project_root_path, &case_path);
     let (updated_at, updated_at_source) = get_updated_at(&project_root_path, &case_path);
 
@@ -213,8 +257,9 @@ fn collect_markdown_files(root: &Path, files: &mut Vec<PathBuf>, errors: &mut Ve
         Ok(entries) => entries,
         Err(error) => {
             errors.push(ScanError {
+                code: "scan.read_directory_failed".to_string(),
                 path: root.to_string_lossy().into_owned(),
-                message: format!("Failed to read directory: {error}"),
+                detail: Some(error.to_string()),
             });
             return;
         }
@@ -225,8 +270,9 @@ fn collect_markdown_files(root: &Path, files: &mut Vec<PathBuf>, errors: &mut Ve
             Ok(entry) => entry,
             Err(error) => {
                 errors.push(ScanError {
+                    code: "scan.read_directory_entry_failed".to_string(),
                     path: root.to_string_lossy().into_owned(),
-                    message: format!("Failed to read directory entry: {error}"),
+                    detail: Some(error.to_string()),
                 });
                 continue;
             }
@@ -315,7 +361,7 @@ fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn ensure_casebook_skeleton(project_root: &Path) -> Result<(), String> {
+fn ensure_casebook_skeleton(project_root: &Path) -> AppResult<()> {
     let casebook_root = project_root.join("casebook");
     let tests_root = casebook_root.join("tests");
     let config_path = casebook_root.join("config.yml");
@@ -329,62 +375,57 @@ fn ensure_casebook_skeleton(project_root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn ensure_directory(path: &Path, label: &str) -> Result<(), String> {
+fn ensure_directory(path: &Path, _label: &str) -> AppResult<()> {
     if path.exists() {
         if path.is_dir() {
             return Ok(());
         }
 
-        return Err(format!(
-            "{} exists but is not a directory: {}",
-            label,
-            path.to_string_lossy()
+        return Err(app_error_with_path(
+            "bootstrap.directory_expected",
+            path.to_string_lossy().into_owned(),
         ));
     }
 
-    fs::create_dir_all(path).map_err(|error| {
-        format!(
-            "Failed to create {} at {}: {}",
-            label,
-            path.to_string_lossy(),
-            error
-        )
-    })
+    fs::create_dir_all(path)
+        .map_err(|error| app_error_with_detail("bootstrap.create_directory_failed", error.to_string()))
 }
 
-fn ensure_file_with_content(path: &Path, content: &str, label: &str) -> Result<(), String> {
+fn ensure_file_with_content(path: &Path, content: &str, _label: &str) -> AppResult<()> {
     if path.exists() {
         if path.is_file() {
             return Ok(());
         }
 
-        return Err(format!(
-            "{} exists but is not a file: {}",
-            label,
-            path.to_string_lossy()
+        return Err(app_error_with_path(
+            "bootstrap.file_expected",
+            path.to_string_lossy().into_owned(),
         ));
     }
 
-    fs::write(path, content).map_err(|error| {
-        format!(
-            "Failed to create {} at {}: {}",
-            label,
-            path.to_string_lossy(),
-            error
-        )
-    })
+    fs::write(path, content)
+        .map_err(|error| app_error_with_detail("bootstrap.create_file_failed", error.to_string()))
 }
 
-fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, String> {
+fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, ScanError> {
     let config_path = casebook_root.join("config.yml");
     if !config_path.exists() {
         return Ok(None);
     }
 
     let content = fs::read_to_string(&config_path)
-        .map_err(|error| format!("Failed to read config: {error}"))?;
-    let config: CasebookConfig =
-        serde_yaml::from_str(&content).map_err(|error| format!("Invalid config.yml: {error}"))?;
+        .map_err(|error| scan_error(
+            "config.read_failed",
+            config_path.to_string_lossy().into_owned(),
+            Some(error.to_string()),
+        ))?;
+    let config: CasebookConfig = serde_yaml::from_str(&content).map_err(|error| {
+        scan_error(
+            "config.invalid",
+            config_path.to_string_lossy().into_owned(),
+            Some(error.to_string()),
+        )
+    })?;
 
     Ok(config.tests_alias.and_then(|value| {
         let trimmed = value.trim().to_string();
@@ -414,6 +455,16 @@ fn validate_case_status(status: &str) -> Result<&'static str, String> {
         Ok(normalized)
     } else {
         Err(format!("Unsupported case status: {status}"))
+    }
+}
+
+fn map_update_case_status_error(error: &str, status: &str) -> AppError {
+    match error {
+        "Invalid frontmatter block" => app_error("frontmatter.invalid_block"),
+        _ if error.starts_with("Unsupported case status:") => {
+            app_error_with_detail("case_status.unsupported", status.to_string())
+        }
+        _ => app_error_with_detail("fallback.unknown", error.to_string()),
     }
 }
 

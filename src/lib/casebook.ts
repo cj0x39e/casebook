@@ -1,4 +1,5 @@
 import { parse as parseYaml } from 'yaml'
+import { defaultLocale, type AppLocale } from '../i18n'
 
 export type UpdatedAtSource = 'git' | 'filesystem'
 export type ParseStatus = 'valid' | 'partial' | 'invalid'
@@ -7,7 +8,14 @@ export type CaseWorkflowStatus = (typeof caseWorkflowStatuses)[number]
 
 export interface ScanError {
   path: string
-  message: string
+  code: string
+  detail: string | null
+}
+
+export interface AppErrorPayload {
+  code: string
+  detail: string | null
+  path: string | null
 }
 
 export interface RawScannedCase {
@@ -30,8 +38,13 @@ export interface RawScanResult {
 }
 
 export interface ParsedCaseSummary {
-  sourceLabel: string
+  source: UpdatedAtSource
   pathLabel: string
+}
+
+export interface ParseNote {
+  key: string
+  params?: Record<string, string>
 }
 
 export interface ParsedCase extends RawScannedCase {
@@ -42,7 +55,7 @@ export interface ParsedCase extends RawScannedCase {
   createdAtLabel: string
   status: CaseWorkflowStatus
   parseStatus: ParseStatus
-  parseNotes: string[]
+  parseNotes: ParseNote[]
   updatedAtLabel: string
   summary: ParsedCaseSummary
   renderBody: string
@@ -52,7 +65,7 @@ export interface ParsedCase extends RawScannedCase {
 interface FrontmatterParseResult {
   data: Record<string, unknown>
   body: string
-  errors: string[]
+  errors: ParseNote[]
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -88,24 +101,29 @@ function splitFrontmatter(content: string): FrontmatterParseResult {
     return {
       data: {},
       body: normalized.trim(),
-      errors: ['Invalid frontmatter block'],
+      errors: [{ key: 'parseNotes.invalidFrontmatterBlock' }],
     }
   }
 
   const frontmatter = normalized.slice(4, closingIndex)
   const body = normalized.slice(closingIndex + 5).trim()
-  const errors: string[] = []
+  const errors: ParseNote[] = []
   let data: Record<string, unknown> = {}
 
   try {
     const parsed = parseYaml(frontmatter)
     if (parsed !== null && typeof parsed !== 'object') {
-      errors.push('Frontmatter must be a YAML object')
+      errors.push({ key: 'parseNotes.frontmatterMustBeObject' })
     } else {
       data = (parsed ?? {}) as Record<string, unknown>
     }
   } catch (error) {
-    errors.push(error instanceof Error ? error.message : 'Unable to parse frontmatter YAML')
+    errors.push({
+      key: 'parseNotes.unableToParseYaml',
+      params: {
+        detail: error instanceof Error ? error.message : 'Unknown YAML parsing error',
+      },
+    })
   }
 
   return { data, body, errors }
@@ -142,12 +160,12 @@ function normalizeCaseWorkflowStatus(value: unknown): CaseWorkflowStatus | null 
   return legacyStatusMap[normalized] ?? null
 }
 
-export function formatUpdatedAt(updatedAt: number | null) {
+export function formatUpdatedAt(updatedAt: number | null, locale: AppLocale = defaultLocale) {
   if (!updatedAt) {
-    return 'Unavailable'
+    return locale === 'zh-CN' ? '不可用' : 'Unavailable'
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
@@ -156,7 +174,7 @@ export function formatUpdatedAt(updatedAt: number | null) {
   }).format(new Date(updatedAt))
 }
 
-export function parseCase(rawCase: RawScannedCase): ParsedCase {
+export function parseCase(rawCase: RawScannedCase, locale: AppLocale = defaultLocale): ParsedCase {
   const fallbackTitle = filenameFromPath(rawCase.relativePath)
   const fallbackPlatform = platformFromPath(rawCase.relativePath)
   const frontmatter = splitFrontmatter(rawCase.content)
@@ -165,7 +183,10 @@ export function parseCase(rawCase: RawScannedCase): ParsedCase {
 
   for (const key of ['title', 'platform']) {
     if (!isNonEmptyString(data[key])) {
-      parseNotes.push(`Missing frontmatter field: ${key}`)
+      parseNotes.push({
+        key: 'parseNotes.missingFrontmatterField',
+        params: { field: key },
+      })
     }
   }
   const parseStatus: ParseStatus = frontmatter.errors.length
@@ -181,13 +202,13 @@ export function parseCase(rawCase: RawScannedCase): ParsedCase {
     title: isNonEmptyString(data.title) ? data.title.trim() : fallbackTitle,
     platform: isNonEmptyString(data.platform) ? data.platform.trim() : fallbackPlatform,
     priority: isNonEmptyString(data.priority) ? data.priority.trim() : null,
-    createdAtLabel: formatUpdatedAt(rawCase.createdAt),
+    createdAtLabel: formatUpdatedAt(rawCase.createdAt, locale),
     status: normalizeCaseWorkflowStatus(data.status) ?? 'todo',
     parseStatus,
     parseNotes,
-    updatedAtLabel: formatUpdatedAt(rawCase.updatedAt),
+    updatedAtLabel: formatUpdatedAt(rawCase.updatedAt, locale),
     summary: {
-      sourceLabel: rawCase.updatedAtSource === 'filesystem' ? 'Filesystem' : 'Git',
+      source: rawCase.updatedAtSource,
       pathLabel: rawCase.relativePath,
     },
     renderBody,

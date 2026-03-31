@@ -2,16 +2,20 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
+import { useI18n } from 'vue-i18n'
 import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
 import {
   caseWorkflowStatuses,
   parseCase,
+  type AppErrorPayload,
+  type ParseNote,
   type CaseWorkflowStatus,
   type ParsedCase,
   type RawScannedCase,
   type RawScanResult,
 } from './lib/casebook'
+import { setAppLocale, type AppLocale } from './i18n'
 
 type ViewState = 'idle' | 'loading' | 'ready' | 'invalid-project' | 'error'
 type DetailContentView = 'rendered' | 'raw'
@@ -63,10 +67,15 @@ const summaryMorePopoverRef = ref<HTMLElement | null>(null)
 const parseNotesTooltipStyle = ref<Record<string, string>>({})
 const settingsPanelStyle = ref<Record<string, string>>({})
 const summaryMorePopoverStyle = ref<Record<string, string>>({})
+const { t, locale, te } = useI18n()
 const markdownRenderer = new MarkdownIt({
   html: false,
   linkify: true,
 })
+const localeOptions: Array<{ value: AppLocale; labelKey: 'locale.english' | 'locale.chinese' }> = [
+  { value: 'en', labelKey: 'locale.english' },
+  { value: 'zh-CN', labelKey: 'locale.chinese' },
+]
 
 const isHomeView = computed(() => selectedProject.value === null && viewState.value === 'idle')
 
@@ -75,7 +84,7 @@ const parsedCases = computed<ParsedCase[]>(() => {
     return []
   }
 
-  return scanResult.value.cases.map(parseCase)
+  return scanResult.value.cases.map((rawCase) => parseCase(rawCase, locale.value as AppLocale))
 })
 
 const parsedCaseMap = computed(() => {
@@ -98,10 +107,14 @@ const selectedCaseRenderedHtml = computed(() => {
   return DOMPurify.sanitize(markdownRenderer.render(selectedCase.value.renderBody))
 })
 
-const testsAlias = computed(() => scanResult.value?.testsAlias?.trim() || 'Tests')
+const testsAlias = computed(
+  () => scanResult.value?.testsAlias?.trim() || t('casebook.defaultTestsAlias'),
+)
 
 const treeFilterLabel = computed(() =>
-  activeTreeStatusFilter.value === 'all' ? 'Filter' : `Filter: ${activeTreeStatusFilter.value}`,
+  activeTreeStatusFilter.value === 'all'
+    ? t('tree.filter')
+    : t('tree.filterWithStatus', { status: statusLabel(activeTreeStatusFilter.value) }),
 )
 
 const caseTree = computed<DirectoryNode | null>(() => {
@@ -130,7 +143,14 @@ const warningSummary = computed(() => {
     return null
   }
 
-  return `${errors.length} warning${errors.length > 1 ? 's' : ''} while reading the project.`
+  return errors.length === 1
+    ? t('banner.warningSummaryOne')
+    : t('banner.warningSummaryOther', { count: errors.length })
+})
+
+const selectedLocale = computed<AppLocale>({
+  get: () => locale.value as AppLocale,
+  set: (value) => setAppLocale(value),
 })
 
 watch(
@@ -226,8 +246,7 @@ async function openProjectDirectory() {
     selectedProject.value = selectedPath
     await scanProject(selectedPath)
   } catch (error) {
-    scanError.value =
-      error instanceof Error ? error.message : 'Unable to choose a project directory'
+    scanError.value = extractErrorMessage(error, 'errors.fallback.chooseProjectDirectory')
   }
 }
 
@@ -244,8 +263,7 @@ async function scanProject(projectPath: string) {
   } catch (error) {
     scanResult.value = null
     viewState.value = 'error'
-    scanError.value =
-      error instanceof Error ? error.message : 'Unable to scan the selected project'
+    scanError.value = extractErrorMessage(error, 'errors.fallback.scanProject')
   }
 }
 
@@ -293,15 +311,36 @@ async function updateCaseStatus(nextStatus: CaseWorkflowStatus) {
       ),
     }
   } catch (error) {
-    statusUpdateError.value = extractErrorMessage(error, 'Unable to update case status')
+    statusUpdateError.value = extractErrorMessage(error, 'errors.fallback.updateCaseStatus')
   } finally {
     statusUpdatePending.value = null
   }
 }
 
-function extractErrorMessage(error: unknown, fallback: string) {
+function translateAppErrorPayload(payload: AppErrorPayload) {
+  const key = `errors.${payload.code}`
+  if (!te(key)) {
+    return t('errors.fallback.unknown')
+  }
+
+  return t(key, {
+    detail: payload.detail ?? '',
+    path: payload.path ?? '',
+    status: payload.detail ?? '',
+  })
+}
+
+function extractErrorMessage(error: unknown, fallbackKey: string) {
   if (typeof error === 'string' && error.trim()) {
     return error
+  }
+
+  if (
+    error &&
+    typeof error === 'object' &&
+    typeof Reflect.get(error, 'code') === 'string'
+  ) {
+    return translateAppErrorPayload(error as AppErrorPayload)
   }
 
   if (error instanceof Error && error.message.trim()) {
@@ -315,7 +354,19 @@ function extractErrorMessage(error: unknown, fallback: string) {
     }
   }
 
-  return fallback
+  return t(fallbackKey)
+}
+
+function statusLabel(status: CaseWorkflowStatus) {
+  return t(`status.${status}`)
+}
+
+function sourceLabel(source: ParsedCase['summary']['source']) {
+  return t(`source.${source}`)
+}
+
+function translateParseNote(note: ParseNote) {
+  return t(note.key, note.params ?? {})
 }
 
 function treeRowIndent(node: TreeNode) {
@@ -584,22 +635,21 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
   <div class="shell" :data-screen="isHomeView ? 'home' : 'inner'">
     <template v-if="isHomeView">
       <main class="home">
-        <div class="home__eyebrow">Casebook</div>
+        <div class="home__eyebrow">{{ t('brand.casebook') }}</div>
         <h1 class="home__title">
-          Quiet space
+          {{ t('home.titleLine1') }}
           <br />
-          for test cases
+          {{ t('home.titleLine2') }}
         </h1>
         <p class="home__summary">
-          Open a local project and read its Markdown-native cases without leaving the codebase.
+          {{ t('home.summary') }}
         </p>
         <div class="home__actions">
           <button class="primary-button" type="button" @click="openProjectDirectory">
-            Open Project Directory
+            {{ t('home.openProjectDirectory') }}
           </button>
           <p class="home__caption">
-            Creates <code>casebook/tests</code> when missing and reads the alias from
-            <code>casebook/config.yml</code>.
+            {{ t('home.caption') }}
           </p>
         </div>
         <p v-if="scanError" class="home__error">{{ scanError }}</p>
@@ -615,7 +665,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
         <aside class="tree-panel">
           <div class="tree-panel__header">
             <div class="tree-panel__header-main">
-              <p class="panel__label">Library</p>
+              <p class="panel__label">{{ t('tree.library') }}</p>
               <h2>{{ testsAlias }}</h2>
             </div>
             <div class="tree-filter">
@@ -636,7 +686,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                   :data-active="activeTreeStatusFilter === 'all'"
                   @click="activeTreeStatusFilter = 'all'"
                 >
-                  全部
+                  {{ t('tree.all') }}
                 </button>
                 <button
                   v-for="workflowStatus in caseWorkflowStatuses"
@@ -646,7 +696,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                   :data-active="activeTreeStatusFilter === workflowStatus"
                   @click="activeTreeStatusFilter = workflowStatus"
                 >
-                  {{ workflowStatus }}
+                  {{ statusLabel(workflowStatus) }}
                 </button>
               </div>
             </div>
@@ -685,7 +735,13 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
             </div>
 
             <div v-else class="placeholder">
-              <p>{{ activeTreeStatusFilter === 'all' ? 'No Markdown cases found.' : '当前筛选条件下没有用例。' }}</p>
+              <p>
+                {{
+                  activeTreeStatusFilter === 'all'
+                    ? t('tree.noCases')
+                    : t('tree.noCasesForFilter')
+                }}
+              </p>
             </div>
           </div>
 
@@ -698,7 +754,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
               @click="showSettingsPanel = !showSettingsPanel"
             >
               <span class="tree-panel__settings-icon">⌘</span>
-              <span>系统设置</span>
+              <span>{{ t('tree.settings') }}</span>
             </button>
           </div>
         </aside>
@@ -715,12 +771,14 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
               <div class="case-summary__meta">
                 <div class="summary-primary">
                   <span class="summary-token">
-                    <span class="summary-token__label">Platform</span>
+                    <span class="summary-token__label">{{ t('detail.platform') }}</span>
                     <span class="summary-token__value">{{ selectedCase.platform }}</span>
                   </span>
                   <span class="summary-token">
-                    <span class="summary-token__label">Priority</span>
-                    <span class="summary-token__value">{{ selectedCase.priority ?? 'None' }}</span>
+                    <span class="summary-token__label">{{ t('detail.priority') }}</span>
+                    <span class="summary-token__value">
+                      {{ selectedCase.priority ?? t('detail.none') }}
+                    </span>
                   </span>
 
                   <div class="summary-more">
@@ -728,11 +786,11 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                       ref="summaryMoreTriggerRef"
                       class="summary-more__trigger"
                       type="button"
-                      aria-label="查看更多摘要信息"
+                      :aria-label="t('detail.moreAriaLabel')"
                       :aria-expanded="showSummaryMeta"
                       @click="showSummaryMeta = !showSummaryMeta"
                     >
-                      More
+                      {{ t('detail.more') }}
                     </button>
                   </div>
                 </div>
@@ -747,7 +805,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                 :data-active="detailContentView === 'rendered'"
                 @click="detailContentView = 'rendered'"
               >
-                渲染视图
+                {{ t('detail.renderedView') }}
               </button>
               <button
                 class="detail-view-switch__button"
@@ -755,7 +813,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                 :data-active="detailContentView === 'raw'"
                 @click="detailContentView = 'raw'"
               >
-                原文视图
+                {{ t('detail.rawView') }}
               </button>
             </div>
 
@@ -781,7 +839,11 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
                   :disabled="statusUpdatePending !== null"
                   @click="updateCaseStatus(workflowStatus)"
                 >
-                  {{ statusUpdatePending === workflowStatus ? 'Saving' : workflowStatus }}
+                  {{
+                    statusUpdatePending === workflowStatus
+                      ? t('detail.saving')
+                      : statusLabel(workflowStatus)
+                  }}
                 </button>
               </div>
 
@@ -790,7 +852,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
           </template>
 
           <div v-else class="placeholder">
-            <p>Select a case from the tree.</p>
+            <p>{{ t('detail.selectCase') }}</p>
           </div>
         </section>
       </main>
@@ -800,26 +862,26 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
           <p class="panel__label">
             {{
               viewState === 'loading'
-                ? 'Scanning'
+                ? t('state.scanning')
                 : viewState === 'invalid-project'
-                  ? 'Unavailable'
-                  : 'Error'
+                  ? t('state.unavailable')
+                  : t('state.error')
             }}
           </p>
           <h2>
             {{
               viewState === 'loading'
-                ? 'Reading cases from the selected project'
+                ? t('state.readingSelectedProject')
                 : viewState === 'invalid-project'
-                  ? 'This directory is not a Casebook project'
-                  : 'Casebook could not read this project'
+                  ? t('state.notCasebookProject')
+                  : t('state.cannotReadProject')
             }}
           </h2>
           <p>
             {{
               viewState === 'loading'
-                ? 'Scanning Markdown files and preparing a structured case detail view.'
-                : scanError || 'Casebook could not prepare this project for scanning.'
+                ? t('state.scanningDescription')
+                : scanError || t('state.cannotPrepareProject')
             }}
           </p>
         </div>
@@ -835,9 +897,11 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
       :style="parseNotesTooltipStyle"
       role="tooltip"
     >
-      <p class="parse-notes-tooltip__title">Parse Notes</p>
+      <p class="parse-notes-tooltip__title">{{ t('detail.parseNotes') }}</p>
       <ul class="parse-notes-tooltip__list">
-        <li v-for="note in selectedCase.parseNotes" :key="note">{{ note }}</li>
+        <li v-for="note in selectedCase.parseNotes" :key="`${note.key}:${JSON.stringify(note.params ?? {})}`">
+          {{ translateParseNote(note) }}
+        </li>
       </ul>
     </div>
 
@@ -850,33 +914,33 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
     >
       <div class="summary-more__grid">
         <div class="summary-more__item">
-          <span class="summary-more__label">ID</span>
+          <span class="summary-more__label">{{ t('detail.id') }}</span>
           <span class="summary-more__value summary-more__value--mono">
             {{ selectedCase.id }}
           </span>
         </div>
         <div class="summary-more__item">
-          <span class="summary-more__label">Created</span>
+          <span class="summary-more__label">{{ t('detail.created') }}</span>
           <span class="summary-more__value">
             {{ selectedCase.createdAtLabel }}
           </span>
         </div>
         <div class="summary-more__item">
-          <span class="summary-more__label">Updated</span>
+          <span class="summary-more__label">{{ t('detail.updated') }}</span>
           <span class="summary-more__value">
             {{ selectedCase.updatedAtLabel }}
           </span>
         </div>
         <div class="summary-more__item">
-          <span class="summary-more__label">Source</span>
+          <span class="summary-more__label">{{ t('detail.source') }}</span>
           <span class="summary-more__value">
-            {{ selectedCase.summary.sourceLabel }}
+            {{ sourceLabel(selectedCase.summary.source) }}
           </span>
         </div>
       </div>
 
       <div class="summary-more__path">
-        <span class="summary-more__label">Path</span>
+        <span class="summary-more__label">{{ t('detail.path') }}</span>
         <span class="summary-more__value">
           {{ selectedCase.summary.pathLabel }}
         </span>
@@ -890,11 +954,11 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
       :style="settingsPanelStyle"
     >
       <section class="settings-panel__section">
-        <p class="panel__label">Project</p>
+        <p class="panel__label">{{ t('settings.project') }}</p>
         <p class="settings-panel__path">{{ selectedProject }}</p>
         <div class="settings-panel__actions">
           <button class="secondary-button" type="button" @click="openProjectDirectory">
-            Change Directory
+            {{ t('settings.changeDirectory') }}
           </button>
           <button
             v-if="selectedProject"
@@ -902,15 +966,25 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
             type="button"
             @click="scanProject(selectedProject)"
           >
-            Rescan
+            {{ t('settings.rescan') }}
           </button>
         </div>
       </section>
 
       <section class="settings-panel__section">
-        <p class="panel__label">Casebook</p>
+        <p class="panel__label">{{ t('settings.casebook') }}</p>
+        <label class="summary-more__label" for="locale-select">{{ t('locale.label') }}</label>
+        <select id="locale-select" v-model="selectedLocale" class="tree-filter__button">
+          <option
+            v-for="localeOption in localeOptions"
+            :key="localeOption.value"
+            :value="localeOption.value"
+          >
+            {{ t(localeOption.labelKey) }}
+          </option>
+        </select>
         <p class="settings-panel__placeholder">
-          AI key、用户名和项目偏好会收进这里。
+          {{ t('settings.placeholder') }}
         </p>
       </section>
     </div>
