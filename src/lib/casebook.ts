@@ -28,6 +28,11 @@ export interface RawScanResult {
   errors: ScanError[]
 }
 
+export interface ParsedCaseSummary {
+  sourceLabel: string
+  pathLabel: string
+}
+
 export interface ParsedCase extends RawScannedCase {
   id: string
   title: string
@@ -38,10 +43,16 @@ export interface ParsedCase extends RawScannedCase {
   parseStatus: ParseStatus
   parseNotes: string[]
   updatedAtLabel: string
-  body: string
+  summary: ParsedCaseSummary
+  renderBody: string
+  rawBody: string
 }
 
-const requiredSections = ['前置条件', '步骤', '预期结果']
+interface FrontmatterParseResult {
+  data: Record<string, unknown>
+  body: string
+  errors: string[]
+}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -56,31 +67,47 @@ function platformFromPath(relativePath: string) {
   return relativePath.split('/')[0] ?? 'unknown'
 }
 
-function findSections(content: string) {
-  return [...content.matchAll(/^##\s+(.+)$/gm)].map((match) => match[1].trim())
+function normalizeLineBreaks(content: string) {
+  return content.replace(/\r\n/g, '\n').trim()
 }
 
-function parseFrontmatter(content: string) {
-  if (!content.startsWith('---')) {
-    return { data: {}, content }
+function splitFrontmatter(content: string): FrontmatterParseResult {
+  const normalized = content.replace(/\r\n/g, '\n')
+
+  if (!normalized.startsWith('---\n')) {
+    return {
+      data: {},
+      body: normalized.trim(),
+      errors: [],
+    }
   }
 
-  const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/)
-  if (!match) {
-    throw new Error('Invalid frontmatter block')
+  const closingIndex = normalized.indexOf('\n---\n', 4)
+  if (closingIndex === -1) {
+    return {
+      data: {},
+      body: normalized.trim(),
+      errors: ['Invalid frontmatter block'],
+    }
   }
 
-  const [, frontmatter, body] = match
-  const parsed = parseYaml(frontmatter)
+  const frontmatter = normalized.slice(4, closingIndex)
+  const body = normalized.slice(closingIndex + 5).trim()
+  const errors: string[] = []
+  let data: Record<string, unknown> = {}
 
-  if (parsed !== null && typeof parsed !== 'object') {
-    throw new Error('Frontmatter must be a YAML object')
+  try {
+    const parsed = parseYaml(frontmatter)
+    if (parsed !== null && typeof parsed !== 'object') {
+      errors.push('Frontmatter must be a YAML object')
+    } else {
+      data = (parsed ?? {}) as Record<string, unknown>
+    }
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : 'Unable to parse frontmatter YAML')
   }
 
-  return {
-    data: (parsed ?? {}) as Record<string, unknown>,
-    content: body,
-  }
+  return { data, body, errors }
 }
 
 function isCaseWorkflowStatus(value: unknown): value is CaseWorkflowStatus {
@@ -107,57 +134,40 @@ export function formatUpdatedAt(updatedAt: number | null) {
 export function parseCase(rawCase: RawScannedCase): ParsedCase {
   const fallbackTitle = filenameFromPath(rawCase.relativePath)
   const fallbackPlatform = platformFromPath(rawCase.relativePath)
+  const frontmatter = splitFrontmatter(rawCase.content)
+  const data = frontmatter.data
+  const parseNotes = [...frontmatter.errors]
 
-  try {
-    const parsed = parseFrontmatter(rawCase.content)
-    const data = parsed.data
-    const sections = findSections(parsed.content)
-    const parseNotes: string[] = []
+  for (const key of ['id', 'title', 'platform', 'created_at']) {
+    if (!isNonEmptyString(data[key])) {
+      parseNotes.push(`Missing frontmatter field: ${key}`)
+    }
+  }
+  const parseStatus: ParseStatus = frontmatter.errors.length
+    ? 'invalid'
+    : parseNotes.length
+      ? 'partial'
+      : 'valid'
+  const renderBody = normalizeLineBreaks(frontmatter.body || rawCase.content)
 
-    for (const key of ['id', 'title', 'platform', 'created_at']) {
-      if (!isNonEmptyString(data[key])) {
-        parseNotes.push(`Missing frontmatter field: ${key}`)
-      }
-    }
-
-    for (const section of requiredSections) {
-      if (!sections.includes(section)) {
-        parseNotes.push(`Missing section: ${section}`)
-      }
-    }
-
-    return {
-      ...rawCase,
-      id: isNonEmptyString(data.id) ? data.id.trim() : rawCase.caseId,
-      title: isNonEmptyString(data.title) ? data.title.trim() : fallbackTitle,
-      platform: isNonEmptyString(data.platform)
-        ? data.platform.trim()
-        : fallbackPlatform,
-      priority: isNonEmptyString(data.priority) ? data.priority.trim() : null,
-      createdAt: isNonEmptyString(data.created_at) ? data.created_at.trim() : null,
-      status: isCaseWorkflowStatus(data.status)
-        ? (data.status.trim() as CaseWorkflowStatus)
-        : '待处理',
-      parseStatus: parseNotes.length === 0 ? 'valid' : 'partial',
-      parseNotes,
-      updatedAtLabel: formatUpdatedAt(rawCase.updatedAt),
-      body: parsed.content.trim(),
-    }
-  } catch (error) {
-    return {
-      ...rawCase,
-      id: rawCase.caseId,
-      title: fallbackTitle,
-      platform: fallbackPlatform,
-      priority: null,
-      createdAt: null,
-      status: '待处理',
-      parseStatus: 'invalid',
-      parseNotes: [
-        error instanceof Error ? error.message : 'Unable to parse Markdown file',
-      ],
-      updatedAtLabel: formatUpdatedAt(rawCase.updatedAt),
-      body: rawCase.content.trim(),
-    }
+  return {
+    ...rawCase,
+    id: isNonEmptyString(data.id) ? data.id.trim() : rawCase.caseId,
+    title: isNonEmptyString(data.title) ? data.title.trim() : fallbackTitle,
+    platform: isNonEmptyString(data.platform) ? data.platform.trim() : fallbackPlatform,
+    priority: isNonEmptyString(data.priority) ? data.priority.trim() : null,
+    createdAt: isNonEmptyString(data.created_at) ? data.created_at.trim() : null,
+    status: isCaseWorkflowStatus(data.status)
+      ? (data.status.trim() as CaseWorkflowStatus)
+      : '待处理',
+    parseStatus,
+    parseNotes,
+    updatedAtLabel: formatUpdatedAt(rawCase.updatedAt),
+    summary: {
+      sourceLabel: rawCase.updatedAtSource === 'filesystem' ? 'Filesystem' : 'Git',
+      pathLabel: rawCase.relativePath,
+    },
+    renderBody,
+    rawBody: frontmatter.body,
   }
 }

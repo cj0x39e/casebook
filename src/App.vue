@@ -2,17 +2,19 @@
 import { computed, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
+import DOMPurify from 'dompurify'
+import MarkdownIt from 'markdown-it'
 import {
   caseWorkflowStatuses,
   parseCase,
   type CaseWorkflowStatus,
   type ParsedCase,
-  type ParseStatus,
   type RawScannedCase,
   type RawScanResult,
 } from './lib/casebook'
 
 type ViewState = 'idle' | 'loading' | 'ready' | 'invalid-project' | 'error'
+type DetailContentView = 'rendered' | 'raw'
 type TreeNode = DirectoryNode | CaseFileNode
 
 interface DirectoryNode {
@@ -31,8 +33,6 @@ interface CaseFileNode {
   name: string
   depth: number
   caseId: string
-  parseStatus: ParseStatus
-  workflowStatus: CaseWorkflowStatus
 }
 
 const ROOT_TREE_PATH = '__tests_root__'
@@ -45,6 +45,13 @@ const selectedCaseId = ref<string | null>(null)
 const expandedDirectories = ref<string[]>([])
 const statusUpdatePending = ref<CaseWorkflowStatus | null>(null)
 const statusUpdateError = ref<string | null>(null)
+const detailContentView = ref<DetailContentView>('rendered')
+const showParseNotes = ref(false)
+const showSettingsPanel = ref(false)
+const markdownRenderer = new MarkdownIt({
+  html: false,
+  linkify: true,
+})
 
 const isHomeView = computed(() => selectedProject.value === null && viewState.value === 'idle')
 
@@ -66,6 +73,14 @@ const selectedCase = computed<ParsedCase | null>(() => {
   }
 
   return parsedCaseMap.value.get(selectedCaseId.value) ?? null
+})
+
+const selectedCaseRenderedHtml = computed(() => {
+  if (!selectedCase.value) {
+    return ''
+  }
+
+  return DOMPurify.sanitize(markdownRenderer.render(selectedCase.value.renderBody))
 })
 
 const testsAlias = computed(() => scanResult.value?.testsAlias?.trim() || 'Tests')
@@ -92,7 +107,23 @@ const warningSummary = computed(() => {
     return null
   }
 
-  return `${errors.length} warning${errors.length > 1 ? 's' : ''}`
+  return `${errors.length} warning${errors.length > 1 ? 's' : ''} while reading the project.`
+})
+
+const toolbarStatusLabel = computed(() => {
+  if (viewState.value === 'loading') {
+    return 'Scanning'
+  }
+
+  if (viewState.value === 'invalid-project') {
+    return 'Missing casebook/tests'
+  }
+
+  if (viewState.value === 'error') {
+    return 'Error'
+  }
+
+  return null
 })
 
 watch(
@@ -121,9 +152,15 @@ watch(
   { immediate: true },
 )
 
+watch(selectedCaseId, () => {
+  detailContentView.value = 'rendered'
+  showParseNotes.value = false
+})
+
 async function openProjectDirectory() {
   scanError.value = null
   statusUpdateError.value = null
+  showSettingsPanel.value = false
 
   try {
     const selectedPath = await open({
@@ -147,6 +184,7 @@ async function scanProject(projectPath: string) {
   viewState.value = 'loading'
   scanError.value = null
   statusUpdateError.value = null
+  showSettingsPanel.value = false
 
   try {
     const result = await invoke<RawScanResult>('scan_casebook', { projectRoot: projectPath })
@@ -225,6 +263,7 @@ function resetToHome() {
   scanError.value = null
   statusUpdateError.value = null
   selectedCaseId.value = null
+  showSettingsPanel.value = false
   viewState.value = 'idle'
 }
 
@@ -272,8 +311,6 @@ function buildCaseTree(cases: ParsedCase[], rootLabel: string): DirectoryNode {
       name: testCase.title,
       depth: currentDirectory.depth + 1,
       caseId: testCase.caseId,
-      parseStatus: testCase.parseStatus,
-      workflowStatus: testCase.status,
     })
   }
 
@@ -361,7 +398,10 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
           <button class="primary-button" type="button" @click="openProjectDirectory">
             Open Project Directory
           </button>
-          <p class="home__caption">Looks for <code>casebook/tests</code> and an optional alias in <code>casebook/config.yml</code>.</p>
+          <p class="home__caption">
+            Looks for <code>casebook/tests</code> and an optional alias in
+            <code>casebook/config.yml</code>.
+          </p>
         </div>
         <p v-if="scanError" class="home__error">{{ scanError }}</p>
       </main>
@@ -369,42 +409,14 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
 
     <template v-else>
       <header class="toolbar">
-        <div class="toolbar__primary">
-          <button class="toolbar__brand" type="button" @click="resetToHome">Casebook</button>
-          <div class="toolbar__project">
-            <p class="toolbar__label">Project</p>
-            <p class="toolbar__path">{{ selectedProject }}</p>
-          </div>
-        </div>
-
-        <div class="toolbar__actions">
-          <span class="status-pill" :data-state="viewState">
-            {{
-              viewState === 'loading'
-                ? 'Scanning'
-                : viewState === 'ready'
-                  ? 'Loaded'
-                  : viewState === 'invalid-project'
-                    ? 'Missing casebook/tests'
-                    : 'Error'
-            }}
-          </span>
-          <button class="secondary-button" type="button" @click="openProjectDirectory">
-            Change Directory
-          </button>
-          <button
-            v-if="selectedProject"
-            class="secondary-button"
-            type="button"
-            @click="scanProject(selectedProject)"
-          >
-            Rescan
-          </button>
-        </div>
+        <button class="toolbar__brand" type="button" @click="resetToHome">Casebook</button>
+        <span v-if="toolbarStatusLabel" class="status-pill" :data-state="viewState">
+          {{ toolbarStatusLabel }}
+        </span>
       </header>
 
       <p v-if="warningSummary" class="inline-banner">
-        {{ warningSummary }} while reading the project.
+        {{ warningSummary }}
       </p>
 
       <main v-if="viewState === 'ready'" class="workspace">
@@ -416,97 +428,209 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
             </div>
           </div>
 
-          <div v-if="visibleTreeNodes.length" class="tree-list">
-            <button
-              v-for="node in visibleTreeNodes"
-              :key="node.id"
-              class="tree-row"
-              type="button"
-              :data-kind="node.kind"
-              :data-selected="node.kind === 'case' && node.caseId === selectedCaseId"
-              :style="{ paddingInlineStart: `${16 + node.depth * 16}px` }"
-              @click="node.kind === 'directory' ? toggleDirectory(node.path) : selectCase(node.caseId)"
-            >
-              <span class="tree-row__caret">
-                {{ node.kind === 'directory' ? (isDirectoryExpanded(node.path) ? '−' : '+') : '·' }}
-              </span>
+          <div class="tree-panel__body">
+            <div v-if="visibleTreeNodes.length" class="tree-list">
+              <button
+                v-for="node in visibleTreeNodes"
+                :key="node.id"
+                class="tree-row"
+                type="button"
+                :data-kind="node.kind"
+                :data-selected="node.kind === 'case' && node.caseId === selectedCaseId"
+                :style="{ paddingInlineStart: `${16 + node.depth * 16}px` }"
+                @click="node.kind === 'directory' ? toggleDirectory(node.path) : selectCase(node.caseId)"
+              >
+                <span class="tree-row__caret">
+                  {{ node.kind === 'directory' ? (isDirectoryExpanded(node.path) ? '−' : '+') : '·' }}
+                </span>
 
-              <span class="tree-row__content">
-                <span class="tree-row__title">{{ node.name }}</span>
-                <span v-if="node.kind === 'case'" class="tree-row__subtitle">{{ node.workflowStatus }}</span>
-                <span v-else class="tree-row__subtitle">{{ detailLabelForPath(node.path) }}</span>
-              </span>
+                <span class="tree-row__content">
+                  <span class="tree-row__title">{{ node.name }}</span>
+                  <span v-if="node.kind === 'directory'" class="tree-row__subtitle">
+                    {{ detailLabelForPath(node.path) }}
+                  </span>
+                </span>
+              </button>
+            </div>
 
-              <span v-if="node.kind === 'case'" class="tree-row__meta" :data-status="node.parseStatus"></span>
-            </button>
+            <div v-else class="placeholder">
+              <p>No Markdown cases found.</p>
+            </div>
           </div>
 
-          <div v-else class="placeholder">
-            <p>No Markdown cases found.</p>
+          <div class="tree-panel__footer">
+            <button
+              class="tree-panel__settings-button"
+              type="button"
+              :aria-expanded="showSettingsPanel"
+              @click="showSettingsPanel = !showSettingsPanel"
+            >
+              <span class="tree-panel__settings-icon">⌘</span>
+              <span>系统设置</span>
+            </button>
+
+            <div v-if="showSettingsPanel" class="settings-panel">
+              <section class="settings-panel__section">
+                <p class="panel__label">Project</p>
+                <p class="settings-panel__path">{{ selectedProject }}</p>
+                <div class="settings-panel__actions">
+                  <button class="secondary-button" type="button" @click="openProjectDirectory">
+                    Change Directory
+                  </button>
+                  <button
+                    v-if="selectedProject"
+                    class="secondary-button"
+                    type="button"
+                    @click="scanProject(selectedProject)"
+                  >
+                    Rescan
+                  </button>
+                </div>
+              </section>
+
+              <section class="settings-panel__section">
+                <p class="panel__label">Casebook</p>
+                <p class="settings-panel__placeholder">
+                  AI key、用户名和项目偏好会收进这里。
+                </p>
+              </section>
+            </div>
           </div>
         </aside>
 
         <section class="detail-panel">
           <template v-if="selectedCase">
-            <div class="detail-panel__header">
-              <div>
-                <p class="panel__label">Case</p>
-                <h2>{{ selectedCase.title }}</h2>
+            <div class="case-summary">
+              <div class="case-summary__header">
+                <div class="case-summary__headline">
+                  <p class="panel__label">Case Summary</p>
+                  <h2>{{ selectedCase.title }}</h2>
+                </div>
+                <div class="detail-panel__badges">
+                  <span class="workflow-pill" :data-status="selectedCase.status">
+                    {{ selectedCase.status }}
+                  </span>
+                  <div
+                    class="parse-status-group"
+                    @mouseenter="showParseNotes = true"
+                    @mouseleave="showParseNotes = false"
+                  >
+                    <span class="parse-pill" :data-status="selectedCase.parseStatus">
+                      {{ selectedCase.parseStatus }}
+                    </span>
+                    <button
+                      v-if="selectedCase.parseNotes.length"
+                      class="parse-notes-trigger"
+                      type="button"
+                      aria-label="查看解析提示"
+                      @focus="showParseNotes = true"
+                      @blur="showParseNotes = false"
+                    >
+                      i
+                    </button>
+                    <div
+                      v-if="selectedCase.parseNotes.length && showParseNotes"
+                      class="parse-notes-tooltip"
+                      role="tooltip"
+                    >
+                      <p class="parse-notes-tooltip__title">Parse Notes</p>
+                      <ul class="parse-notes-tooltip__list">
+                        <li v-for="note in selectedCase.parseNotes" :key="note">{{ note }}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="detail-panel__badges">
-                <span class="workflow-pill" :data-status="selectedCase.status">{{ selectedCase.status }}</span>
-                <span class="parse-pill" :data-status="selectedCase.parseStatus">{{ selectedCase.parseStatus }}</span>
+
+              <div class="case-summary__meta">
+                <div class="summary-keyline">
+                  <span class="summary-field__label">ID</span>
+                  <span class="summary-field__value summary-field__value--mono">
+                    {{ selectedCase.id }}
+                  </span>
+                </div>
+
+                <div class="summary-inline">
+                  <span class="summary-token">
+                    <span class="summary-token__label">Platform</span>
+                    <span class="summary-token__value">{{ selectedCase.platform }}</span>
+                  </span>
+                  <span class="summary-token">
+                    <span class="summary-token__label">Priority</span>
+                    <span class="summary-token__value">{{ selectedCase.priority ?? 'None' }}</span>
+                  </span>
+                  <span class="summary-token">
+                    <span class="summary-token__label">Created</span>
+                    <span class="summary-token__value">
+                      {{ selectedCase.createdAt ?? 'Unavailable' }}
+                    </span>
+                  </span>
+                  <span class="summary-token">
+                    <span class="summary-token__label">Updated</span>
+                    <span class="summary-token__value">{{ selectedCase.updatedAtLabel }}</span>
+                  </span>
+                  <span class="summary-token">
+                    <span class="summary-token__label">Source</span>
+                    <span class="summary-token__value">{{ selectedCase.summary.sourceLabel }}</span>
+                  </span>
+                </div>
+
+                <p class="summary-pathline">
+                  <span class="summary-pathline__label">Path</span>
+                  <span class="summary-pathline__value">
+                    {{ selectedCase.summary.pathLabel }}
+                  </span>
+                </p>
+              </div>
+
+              <div class="case-summary__footer">
+                <div class="status-switch">
+                  <button
+                    v-for="workflowStatus in caseWorkflowStatuses"
+                    :key="workflowStatus"
+                    class="status-switch__button"
+                    type="button"
+                    :data-active="workflowStatus === selectedCase.status"
+                    :disabled="statusUpdatePending !== null"
+                    @click="updateCaseStatus(workflowStatus)"
+                  >
+                    {{ statusUpdatePending === workflowStatus ? 'Saving' : workflowStatus }}
+                  </button>
+                </div>
+
+                <p v-if="statusUpdateError" class="inline-error">{{ statusUpdateError }}</p>
               </div>
             </div>
 
-            <dl class="meta-grid">
-              <div class="meta-item">
-                <dt>ID</dt>
-                <dd>{{ selectedCase.id }}</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Platform</dt>
-                <dd>{{ selectedCase.platform }}</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Priority</dt>
-                <dd>{{ selectedCase.priority ?? 'None' }}</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Updated</dt>
-                <dd>{{ selectedCase.updatedAtLabel }}</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Source</dt>
-                <dd>{{ selectedCase.updatedAtSource === 'filesystem' ? 'Filesystem' : 'Git' }}</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Path</dt>
-                <dd>{{ selectedCase.relativePath }}</dd>
-              </div>
-            </dl>
-
-            <div class="status-switch">
+            <div class="detail-view-switch">
               <button
-                v-for="workflowStatus in caseWorkflowStatuses"
-                :key="workflowStatus"
-                class="status-switch__button"
+                class="detail-view-switch__button"
                 type="button"
-                :data-active="workflowStatus === selectedCase.status"
-                :disabled="statusUpdatePending !== null"
-                @click="updateCaseStatus(workflowStatus)"
+                :data-active="detailContentView === 'rendered'"
+                @click="detailContentView = 'rendered'"
               >
-                {{ statusUpdatePending === workflowStatus ? 'Saving' : workflowStatus }}
+                渲染视图
+              </button>
+              <button
+                class="detail-view-switch__button"
+                type="button"
+                :data-active="detailContentView === 'raw'"
+                @click="detailContentView = 'raw'"
+              >
+                原文视图
               </button>
             </div>
 
-            <p v-if="statusUpdateError" class="inline-error">{{ statusUpdateError }}</p>
-
-            <ul v-if="selectedCase.parseNotes.length" class="notes-list">
-              <li v-for="note in selectedCase.parseNotes" :key="note">{{ note }}</li>
-            </ul>
-
-            <pre class="case-body">{{ selectedCase.body || 'No body content.' }}</pre>
+            <section class="detail-document">
+              <div
+                v-if="detailContentView === 'rendered'"
+                class="markdown-content"
+                v-html="selectedCaseRenderedHtml"
+              />
+              <pre v-else class="raw-markdown__content raw-markdown__content--panel">{{
+                selectedCase.content
+              }}</pre>
+            </section>
           </template>
 
           <div v-else class="placeholder">
@@ -518,7 +642,13 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
       <main v-else class="inner-state">
         <div class="inner-state__body">
           <p class="panel__label">
-            {{ viewState === 'loading' ? 'Scanning' : viewState === 'invalid-project' ? 'Unavailable' : 'Error' }}
+            {{
+              viewState === 'loading'
+                ? 'Scanning'
+                : viewState === 'invalid-project'
+                  ? 'Unavailable'
+                  : 'Error'
+            }}
           </p>
           <h2>
             {{
@@ -532,7 +662,7 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
           <p>
             {{
               viewState === 'loading'
-                ? 'Scanning Markdown files and preparing the case tree.'
+                ? 'Scanning Markdown files and preparing a structured case detail view.'
                 : scanError || 'Expected to find casebook/tests under the selected directory.'
             }}
           </p>
