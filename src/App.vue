@@ -16,29 +16,11 @@ import {
   type RawScanResult,
 } from './lib/casebook'
 import { setAppLocale, type AppLocale } from './i18n'
+import CaseTreeNode from './components/CaseTreeNode.vue'
+import type { DirectoryNode, TreeNode } from './lib/tree'
 
 type ViewState = 'idle' | 'loading' | 'ready' | 'invalid-project' | 'error'
 type DetailContentView = 'rendered' | 'raw'
-type TreeNode = DirectoryNode | CaseFileNode
-
-interface DirectoryNode {
-  kind: 'directory'
-  id: string
-  path: string
-  name: string
-  depth: number
-  children: TreeNode[]
-}
-
-interface CaseFileNode {
-  kind: 'case'
-  id: string
-  path: string
-  name: string
-  depth: number
-  caseId: string
-  status: CaseWorkflowStatus
-}
 
 const ROOT_TREE_PATH = '__tests_root__'
 
@@ -125,17 +107,15 @@ const caseTree = computed<DirectoryNode | null>(() => {
   return buildCaseTree(parsedCases.value, testsAlias.value)
 })
 
-const visibleTreeNodes = computed(() => {
+const visibleTree = computed<DirectoryNode | null>(() => {
   if (!caseTree.value) {
-    return []
+    return null
   }
 
-  return flattenTree(
-    caseTree.value,
-    new Set(expandedDirectories.value),
-    activeTreeStatusFilter.value,
-  )
+  return filterTreeDirectory(caseTree.value, activeTreeStatusFilter.value)
 })
+
+const visibleTreeChildren = computed(() => visibleTree.value?.children ?? [])
 
 const warningSummary = computed(() => {
   const errors = scanResult.value?.errors ?? []
@@ -369,22 +349,6 @@ function translateParseNote(note: ParseNote) {
   return t(note.key, note.params ?? {})
 }
 
-function treeRowIndent(node: TreeNode) {
-  return node.kind === 'directory' ? 10 : 22
-}
-
-function treeNodeTooltip(node: TreeNode) {
-  if (node.kind === 'directory') {
-    if (node.path === ROOT_TREE_PATH) {
-      return scanResult.value?.testsRoot ?? 'casebook/tests'
-    }
-
-    return node.path
-  }
-
-  return `${node.name}\n${node.path}`
-}
-
 function buildFixedTopRightPosition(anchor: HTMLElement, offset: number) {
   const rect = anchor.getBoundingClientRect()
   const margin = 28
@@ -542,80 +506,30 @@ function sortTree(directory: DirectoryNode) {
   }
 }
 
-function flattenTree(
-  directory: DirectoryNode,
-  expanded: Set<string>,
-  statusFilter: CaseWorkflowStatus | 'all',
-): TreeNode[] {
-  const nodes: TreeNode[] = []
-
-  for (const child of directory.children) {
-    if (child.kind === 'directory') {
-      if (directoryHasMatchingCases(child, statusFilter)) {
-        nodes.push(child)
-        if (expanded.has(child.path)) {
-          nodes.push(...flattenTreeChildren(child, expanded, statusFilter))
-        }
-      }
-      continue
-    }
-
-    if (statusFilter === 'all' || child.status === statusFilter) {
-      nodes.push(child)
-    }
+function filterTreeNode(node: TreeNode, statusFilter: CaseWorkflowStatus | 'all'): TreeNode | null {
+  if (node.kind === 'case') {
+    return statusFilter === 'all' || node.status === statusFilter ? node : null
   }
 
-  return nodes
+  return filterTreeDirectory(node, statusFilter)
 }
 
-function flattenTreeChildren(
-  directory: DirectoryNode,
-  expanded: Set<string>,
-  statusFilter: CaseWorkflowStatus | 'all',
-): TreeNode[] {
-  const nodes: TreeNode[] = []
-
-  if (!expanded.has(directory.path)) {
-    return nodes
-  }
-
-  for (const child of directory.children) {
-    if (child.kind === 'directory') {
-      if (directoryHasMatchingCases(child, statusFilter)) {
-        nodes.push(child)
-        if (expanded.has(child.path)) {
-          nodes.push(...flattenTreeChildren(child, expanded, statusFilter))
-        }
-      }
-      continue
-    }
-
-    if (statusFilter === 'all' || child.status === statusFilter) {
-      nodes.push(child)
-    }
-  }
-
-  return nodes
-}
-
-function directoryHasMatchingCases(
+function filterTreeDirectory(
   directory: DirectoryNode,
   statusFilter: CaseWorkflowStatus | 'all',
-): boolean {
-  for (const child of directory.children) {
-    if (child.kind === 'directory') {
-      if (directoryHasMatchingCases(child, statusFilter)) {
-        return true
-      }
-      continue
-    }
+): DirectoryNode | null {
+  const children = directory.children
+    .map((child) => filterTreeNode(child, statusFilter))
+    .filter((child): child is TreeNode => child !== null)
 
-    if (statusFilter === 'all' || child.status === statusFilter) {
-      return true
-    }
+  if (directory.path !== ROOT_TREE_PATH && !children.length) {
+    return null
   }
 
-  return false
+  return {
+    ...directory,
+    children,
+  }
 }
 
 function collectDirectoryPaths(directory: DirectoryNode): string[] {
@@ -703,36 +617,19 @@ function collectDirectoryPaths(directory: DirectoryNode): string[] {
           </div>
 
           <div class="tree-panel__body">
-            <div v-if="visibleTreeNodes.length" class="tree-list">
-              <button
-                v-for="node in visibleTreeNodes"
+            <ul v-if="visibleTreeChildren.length" class="case-tree" role="tree">
+              <CaseTreeNode
+                v-for="(node, index) in visibleTreeChildren"
                 :key="node.id"
-                class="tree-row"
-                type="button"
-                :data-kind="node.kind"
-                :data-depth="node.depth"
-                :data-selected="node.kind === 'case' && node.caseId === selectedCaseId"
-                :style="{ paddingInlineStart: `${treeRowIndent(node)}px` }"
-                :title="treeNodeTooltip(node)"
-                @click="node.kind === 'directory' ? toggleDirectory(node.path) : selectCase(node.caseId)"
-              >
-                <span class="tree-row__caret">
-                  {{ node.kind === 'directory' ? (isDirectoryExpanded(node.path) ? '−' : '+') : '' }}
-                </span>
-
-                <span class="tree-row__content">
-                  <span class="tree-row__title">
-                    <span
-                      v-if="node.kind === 'case'"
-                      class="tree-row__status-dot"
-                      :data-status="node.status"
-                      aria-hidden="true"
-                    />
-                    <span>{{ node.name }}</span>
-                  </span>
-                </span>
-              </button>
-            </div>
+                :node="node"
+                :level="0"
+                :is-last-child="index === visibleTreeChildren.length - 1"
+                :selected-case-id="selectedCaseId"
+                :expanded-directories="expandedDirectories"
+                @toggle="toggleDirectory"
+                @select="selectCase"
+              />
+            </ul>
 
             <div v-else class="placeholder">
               <p>
