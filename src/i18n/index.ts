@@ -1,4 +1,5 @@
-import { createI18n } from 'vue-i18n'
+import i18n from 'i18next'
+import { initReactI18next } from 'react-i18next'
 import { messages } from './messages'
 
 export type AppLocale = 'en' | 'zh-CN'
@@ -24,17 +25,26 @@ export function loadLocale(): AppLocale {
   return defaultLocale
 }
 
-export const i18n = createI18n({
-  legacy: false,
-  locale: loadLocale(),
-  fallbackLocale: defaultLocale,
-  messages,
-})
+export function initI18n() {
+  i18n.use(initReactI18next).init({
+    lng: loadLocale(),
+    fallbackLng: defaultLocale,
+    resources: {
+      en: { translation: messages.en },
+      'zh-CN': { translation: messages['zh-CN'] },
+    },
+    interpolation: {
+      escapeValue: false,
+    },
+  })
+}
 
 export function setAppLocale(locale: AppLocale) {
-  i18n.global.locale.value = locale
+  i18n.changeLanguage(locale)
 
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(localeStorageKey, locale)
   }
 }
+
+export { i18n }
