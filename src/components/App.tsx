@@ -24,9 +24,8 @@ export function App() {
     viewState,
     openProjectDirectory,
     scanError,
-    testsAlias,
+    parsedCases,
     visibleTreeChildren,
-    treeFilterLabel,
     showTreeFilterPanel,
     setShowTreeFilterPanel,
     treeFilterButtonRef,
@@ -75,6 +74,35 @@ export function App() {
 
   const hasParseNotes = selectedCase && selectedCase.parseNotes.length > 0
 
+  const statusSummary = useMemo(() => {
+    const counts = {
+      todo: 0,
+      blocked: 0,
+      pass: 0,
+    }
+
+    for (const testCase of parsedCases) {
+      if (testCase.status === 'todo') counts.todo += 1
+      if (testCase.status === 'blocked') counts.blocked += 1
+      if (testCase.status === 'pass') counts.pass += 1
+    }
+
+    const total = parsedCases.length
+    const percent = (count: number) => (total ? Math.round((count / total) * 100) : 0)
+
+    return {
+      total,
+      counts,
+      percents: {
+        todo: percent(counts.todo),
+        blocked: percent(counts.blocked),
+        pass: percent(counts.pass),
+      },
+    }
+  }, [parsedCases])
+
+  const filterLabel = activeTreeStatusFilter === 'all' ? 'ALL' : statusLabel(activeTreeStatusFilter)
+
   return (
     <div className="shell" data-screen={isHomeView ? 'home' : 'inner'}>
       {isHomeView ? (
@@ -109,138 +137,154 @@ export function App() {
           {warningSummary && <p className="inline-banner">{warningSummary}</p>}
 
           {viewState === 'ready' ? (
-            <main className="workspace">
-              <aside className="tree-panel">
-                <div className="tree-panel__header">
-                  <div className="tree-panel__header-main">
-                    <p className="panel__label">{t('tree.library')}</p>
-                    <h2>{testsAlias}</h2>
-                  </div>
-                  <div className="tree-filter">
-                    <button
-                      ref={treeFilterButtonRef}
-                      className="tree-filter__button"
-                      type="button"
-                      aria-expanded={showTreeFilterPanel}
-                      onClick={() => setShowTreeFilterPanel(!showTreeFilterPanel)}
-                    >
-                      {treeFilterLabel}
-                    </button>
+            <main className="workspace workspace--dashboard">
+              <aside className="sidebar">
+                <div className="sidebar__top">
+                  <div className="sidebar__stats">
+                    {(['pass', 'blocked', 'todo'] as const).map((status) => (
+                      <button
+                        key={status}
+                        className="sidebar__stat"
+                        type="button"
+                        data-status={status}
+                        data-active={activeTreeStatusFilter === status}
+                        onClick={() => setActiveTreeStatusFilter(status)}
+                      >
+                        <span className="sidebar__stat-count">{statusSummary.counts[status]}</span>
+                        <span className="sidebar__stat-meta">
+                          <span className="sidebar__stat-swatch" />
+                          <span className="sidebar__stat-percent">
+                            {statusSummary.percents[status]}%
+                          </span>
+                        </span>
+                      </button>
+                    ))}
 
-                    {showTreeFilterPanel && (
-                      <div ref={treeFilterPanelRef} className="tree-filter__panel">
-                        <button
-                          className="tree-filter__option"
-                          type="button"
-                          data-active={activeTreeStatusFilter === 'all'}
-                          onClick={() => setActiveTreeStatusFilter('all')}
-                        >
-                          {t('tree.all')}
-                        </button>
-                        {caseWorkflowStatuses.map((workflowStatus) => (
+                    <div className="sidebar__filter">
+                      <button
+                        ref={treeFilterButtonRef}
+                        className="sidebar__filter-button"
+                        type="button"
+                        aria-expanded={showTreeFilterPanel}
+                        onClick={() => setShowTreeFilterPanel(!showTreeFilterPanel)}
+                      >
+                        <span>{filterLabel}</span>
+                        <span className="sidebar__filter-caret" aria-hidden="true" />
+                      </button>
+
+                      {showTreeFilterPanel && (
+                        <div ref={treeFilterPanelRef} className="tree-filter__panel sidebar__filter-panel">
                           <button
-                            key={workflowStatus}
                             className="tree-filter__option"
                             type="button"
-                            data-active={activeTreeStatusFilter === workflowStatus}
-                            onClick={() => setActiveTreeStatusFilter(workflowStatus)}
+                            data-active={activeTreeStatusFilter === 'all'}
+                            onClick={() => setActiveTreeStatusFilter('all')}
                           >
-                            {statusLabel(workflowStatus)}
+                            {t('tree.all')}
                           </button>
+                          {caseWorkflowStatuses.map((workflowStatus) => (
+                            <button
+                              key={workflowStatus}
+                              className="tree-filter__option"
+                              type="button"
+                              data-active={activeTreeStatusFilter === workflowStatus}
+                              onClick={() => setActiveTreeStatusFilter(workflowStatus)}
+                            >
+                              {statusLabel(workflowStatus)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="tree-panel tree-panel--card">
+                  <div className="tree-panel__body">
+                    {visibleTreeChildren.length > 0 ? (
+                      <ul className="case-tree" role="tree">
+                        {visibleTreeChildren.map((node, index) => (
+                          <CaseTreeNode
+                            key={node.id}
+                            node={node}
+                            level={0}
+                            isLastChild={index === visibleTreeChildren.length - 1}
+                            selectedCaseId={selectedCaseId}
+                            expandedDirectories={expandedDirectories}
+                            onToggle={toggleDirectory}
+                            onSelect={selectCase}
+                          />
                         ))}
+                      </ul>
+                    ) : (
+                      <div className="placeholder">
+                        <p>
+                          {activeTreeStatusFilter === 'all'
+                            ? t('tree.noCases')
+                            : t('tree.noCasesForFilter')}
+                        </p>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="tree-panel__body">
-                  {visibleTreeChildren.length > 0 ? (
-                    <ul className="case-tree" role="tree">
-                      {visibleTreeChildren.map((node, index) => (
-                        <CaseTreeNode
-                          key={node.id}
-                          node={node}
-                          level={0}
-                          isLastChild={index === visibleTreeChildren.length - 1}
-                          selectedCaseId={selectedCaseId}
-                          expandedDirectories={expandedDirectories}
-                          onToggle={toggleDirectory}
-                          onSelect={selectCase}
-                        />
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="placeholder">
-                      <p>
-                        {activeTreeStatusFilter === 'all'
-                          ? t('tree.noCases')
-                          : t('tree.noCasesForFilter')}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="tree-panel__footer">
+                <div className="sidebar__footer">
                   <button
                     ref={settingsButtonRef}
-                    className="tree-panel__settings-button"
+                    className="sidebar__settings-button"
                     type="button"
                     aria-expanded={showSettingsPanel}
                     onClick={() => setShowSettingsPanel(!showSettingsPanel)}
                   >
-                    <span className="tree-panel__settings-icon">⌘</span>
-                    <span>{t('tree.settings')}</span>
+                    <span className="sidebar__settings-icon">⌘</span>
                   </button>
+                  <span className="sidebar__version">
+                    {t('brand.casebook')} {t('home.version')}
+                  </span>
                 </div>
               </aside>
 
-              <section className="detail-panel">
+              <section className="detail-panel detail-panel--dashboard">
                 {selectedCase ? (
                   <>
-                    <div className="case-summary">
-                      <div className="case-summary__header">
-                        <div className="case-summary__headline">
-                          <h2>{selectedCase.title}</h2>
-                          {hasParseNotes && (
-                            <button
-                              ref={parseNotesTriggerRef}
-                              className="parse-notes-trigger"
-                              type="button"
-                              aria-expanded={showParseNotes}
-                              onClick={() => setShowParseNotes(!showParseNotes)}
-                            >
-                              <span className="parse-notes-trigger__icon">!</span>
-                            </button>
-                          )}
-                        </div>
+                    <div className="detail-header">
+                      <div className="detail-header__title-row">
+                        <span className="detail-header__status" data-status={selectedCase.status} />
+                        <h2>{selectedCase.title}</h2>
+                        {hasParseNotes && (
+                          <button
+                            ref={parseNotesTriggerRef}
+                            className="parse-notes-trigger"
+                            type="button"
+                            aria-expanded={showParseNotes}
+                            onClick={() => setShowParseNotes(!showParseNotes)}
+                          >
+                            <span className="parse-notes-trigger__icon">!</span>
+                          </button>
+                        )}
                       </div>
-
-                      <div className="case-summary__meta">
-                        <div className="summary-primary">
-                          <span className="summary-token">
-                            <span className="summary-token__label">{t('detail.platform')}</span>
-                            <span className="summary-token__value">{selectedCase.platform}</span>
-                          </span>
-                          <span className="summary-token">
-                            <span className="summary-token__label">{t('detail.priority')}</span>
-                            <span className="summary-token__value">
-                              {selectedCase.priority ?? t('detail.none')}
-                            </span>
-                          </span>
-
-                          <div className="summary-more">
-                            <button
-                              ref={summaryMoreTriggerRef}
-                              className="summary-more__trigger"
-                              type="button"
-                              aria-label={t('detail.moreAriaLabel')}
-                              aria-expanded={showSummaryMeta}
-                              onClick={() => setShowSummaryMeta(!showSummaryMeta)}
-                            >
-                              {t('detail.more')}
-                            </button>
-                          </div>
-                        </div>
+                      <div className="detail-header__meta-row">
+                        <span className="detail-header__priority">
+                          {selectedCase.priority ?? 'P0'}
+                        </span>
+                        <span className="detail-header__meta">
+                          {t('detail.updated')}: {selectedCase.updatedAtLabel}
+                        </span>
+                        <span className="detail-header__meta">
+                          {t('detail.created')}: {selectedCase.createdAtLabel}
+                        </span>
+                        <button
+                          ref={summaryMoreTriggerRef}
+                          className="detail-header__more"
+                          type="button"
+                          aria-label={t('detail.moreAriaLabel')}
+                          aria-expanded={showSummaryMeta}
+                          onClick={() => setShowSummaryMeta(!showSummaryMeta)}
+                        >
+                          <span />
+                          <span />
+                          <span />
+                        </button>
                       </div>
                     </div>
 
@@ -277,6 +321,18 @@ export function App() {
                     </section>
 
                     <div className="detail-panel__actions">
+                      <div className="status-dots">
+                        {(['todo', 'blocked', 'pass'] as const).map((workflowStatus) => (
+                          <button
+                            key={workflowStatus}
+                            className="status-dot"
+                            type="button"
+                            data-status={workflowStatus}
+                            aria-label={statusLabel(workflowStatus)}
+                            onClick={() => updateCaseStatus(workflowStatus)}
+                          />
+                        ))}
+                      </div>
                       <div className="status-switch">
                         {caseWorkflowStatuses.map((workflowStatus) => (
                           <button

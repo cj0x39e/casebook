@@ -1,6 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import type { CaseWorkflowStatus } from '../lib/casebook'
 import type { CaseFileNode, TreeNode } from '../lib/tree'
+import angleDownSmall from '../assets/angle-down-small.svg'
+import angleRightSmall from '../assets/angle-right-small.svg'
+import folderIcon from '../assets/folder.svg'
+import fileIcon from '../assets/file.svg'
 
 interface CaseTreeNodeProps {
   node: TreeNode
@@ -65,7 +69,12 @@ export function CaseTreeNode({
             title={node.path}
             onClick={handleDirectoryToggle}
           >
-            <span className="tree-view__arrow" data-expanded={isExpanded} aria-hidden="true" />
+            <span className="tree-view__arrow" data-expanded={isExpanded} aria-hidden="true">
+              <img src={isExpanded ? angleDownSmall : angleRightSmall} alt="" />
+            </span>
+            <span className="tree-view__icon" aria-hidden="true">
+              <img src={folderIcon} alt="" />
+            </span>
             <span className="tree-view__label">{node.name}</span>
           </button>
         ) : (
@@ -76,7 +85,10 @@ export function CaseTreeNode({
             title={`${node.name}\n${node.path}`}
             onClick={() => handleCaseSelect(node as CaseFileNode)}
           >
-            <span className="tree-view__dot" data-status={(node as CaseFileNode).status} aria-hidden="true" />
+            <span className="tree-view__arrow tree-view__arrow--spacer" aria-hidden="true" />
+            <span className="tree-view__icon" aria-hidden="true">
+              <img src={fileIcon} alt="" />
+            </span>
             <span className="tree-view__label">{node.name}</span>
             <span className="tree-view__sr">{statusLabel((node as CaseFileNode).status)}</span>
           </button>
