@@ -10,11 +10,11 @@ export const messages = {
       chinese: 'Chinese',
     },
     home: {
-      titleLine1: 'Quiet space',
-      titleLine2: 'for test cases',
-      summary: 'Open a local project and read its Markdown-native cases without leaving the codebase.',
-      openProjectDirectory: 'Open Project Directory',
+      greeting: 'Hello, Welcome to Case Book.',
+      heroWord: 'PASS',
+      openProjectDirectory: 'Open Project',
       caption: 'Creates casebook/tests when missing and reads the alias from casebook/config.yml.',
+      version: '0.0.1',
     },
     tree: {
       library: 'Library',
@@ -136,11 +136,11 @@ export const messages = {
       chinese: '中文',
     },
     home: {
-      titleLine1: '测试用例的',
-      titleLine2: '安静空间',
-      summary: '打开本地项目，在不离开代码库的前提下阅读 Markdown 原生测试用例。',
-      openProjectDirectory: '打开项目目录',
+      greeting: 'Hello, Welcome to Case Book.',
+      heroWord: 'PASS',
+      openProjectDirectory: '打开项目',
       caption: '如果缺少 casebook/tests 会自动创建，并从 casebook/config.yml 读取别名。',
+      version: '0.0.1',
     },
     tree: {
       library: '用例库',

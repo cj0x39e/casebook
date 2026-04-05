@@ -7,6 +7,9 @@ import { caseWorkflowStatuses } from '../lib/casebook'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import type { AppLocale } from '../i18n'
+import appIcon from '../../src-tauri/icons/128x128.png'
+import goIcon from '../assets/go.svg'
+import passWordmark from '../assets/PASS.svg'
 
 const markdownRenderer = new MarkdownIt({
   html: false,
@@ -76,19 +79,29 @@ export function App() {
     <div className="shell" data-screen={isHomeView ? 'home' : 'inner'}>
       {isHomeView ? (
         <main className="home">
-          <div className="home__eyebrow">{t('brand.casebook')}</div>
-          <h1 className="home__title">
-            {t('home.titleLine1')}
-            <br />
-            {t('home.titleLine2')}
-          </h1>
-          <p className="home__summary">{t('home.summary')}</p>
-          <div className="home__actions">
-            <button className="primary-button" type="button" onClick={openProjectDirectory}>
-              {t('home.openProjectDirectory')}
-            </button>
-            <p className="home__caption">{t('home.caption')}</p>
-          </div>
+          <p className="home__greeting">{t('home.greeting')}</p>
+
+          <section className="home-card" aria-label={t('brand.casebook')}>
+            <header className="home-card__launch">
+              <button className="home-launch-button" type="button" onClick={openProjectDirectory}>
+                <span>{t('home.openProjectDirectory')}</span>
+                <span className="home-launch-button__icon" aria-hidden="true">
+                  <img src={goIcon} alt="" />
+                </span>
+              </button>
+            </header>
+
+            <div className="home-card__hero" aria-hidden="true">
+              <img className="home-card__script" src={passWordmark} alt="" />
+            </div>
+
+            <footer className="home-card__footer">
+              <img className="home-brand-mark" src={appIcon} alt="" aria-hidden="true" />
+              <p className="home-brand-name">{t('brand.casebook')}</p>
+              <p className="home-brand-version">{t('home.version')}</p>
+            </footer>
+          </section>
+
           {scanError && <p className="home__error">{scanError}</p>}
         </main>
       ) : (
