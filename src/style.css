@@ -449,24 +449,13 @@ code {
   line-height: 1.45;
 }
 
-.workflow-pill[data-status='todo'] {
-  color: var(--pending);
-  background: rgba(17, 17, 17, 0.05);
-}
-
-.workflow-pill[data-status='in_progress'] {
-  color: var(--active);
+.workflow-pill {
+  color: var(--ink);
   background: rgba(17, 17, 17, 0.08);
-}
-
-.workflow-pill[data-status='pass'] {
-  color: var(--passed);
-  background: rgba(17, 17, 17, 0.12);
-}
-
-.workflow-pill[data-status='blocked'] {
-  color: var(--blocked);
-  background: rgba(17, 17, 17, 0.16);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .inline-banner {
@@ -565,7 +554,7 @@ code {
 }
 
 .sidebar__stat[data-status='todo'] .sidebar__stat-count {
-  color: #ffd400;
+  color: #FFD400;
 }
 
 .sidebar__stat-meta {
@@ -581,18 +570,6 @@ code {
   width: 6px;
   height: 6px;
   border-radius: 1px;
-}
-
-.sidebar__stat[data-status='pass'] .sidebar__stat-swatch {
-  background: #2fda00;
-}
-
-.sidebar__stat[data-status='blocked'] .sidebar__stat-swatch {
-  background: #ff0004;
-}
-
-.sidebar__stat[data-status='todo'] .sidebar__stat-swatch {
-  background: #ffd400;
 }
 
 .sidebar__filter-button {
@@ -919,20 +896,8 @@ code {
   background: transparent;
 }
 
-.tree-view__row--case[data-status='pass']::before {
-  background: #22c55e;
-}
-
-.tree-view__row--case[data-status='blocked']::before {
-  background: #ef4444;
-}
-
-.tree-view__row--case[data-status='todo']::before {
-  background: #eab308;
-}
-
-.tree-view__row--case[data-status='in_progress']::before {
-  background: #3b82f6;
+.tree-view__row--case::before {
+  background: var(--status-color, transparent);
 }
 
 .tree-view__subtree {
@@ -1156,22 +1121,6 @@ code {
   width: 22px;
   height: 22px;
   border: 1px solid #000000;
-  background: #d9d9d9;
-}
-
-.detail-header__status[data-status='todo'] {
-  background: #ffd400;
-}
-
-.detail-header__status[data-status='blocked'] {
-  background: #ff0004;
-}
-
-.detail-header__status[data-status='pass'] {
-  background: #2fda00;
-}
-
-.detail-header__status[data-status='in_progress'] {
   background: #d9d9d9;
 }
 
@@ -1490,18 +1439,6 @@ code {
   font-size: 10px;
   line-height: 1;
   color: #111111;
-}
-
-.status-dot[data-status='todo'] {
-  background: #ffd400;
-}
-
-.status-dot[data-status='blocked'] {
-  background: #ff0004;
-}
-
-.status-dot[data-status='pass'] {
-  background: #2fda00;
 }
 
 .status-switch {

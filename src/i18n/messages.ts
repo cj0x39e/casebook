@@ -59,12 +59,6 @@ export const messages = {
       scanningDescription: 'Scanning Markdown files and preparing a structured case detail view.',
       cannotPrepareProject: 'Casebook could not prepare this project for scanning.',
     },
-    status: {
-      todo: 'Todo',
-      in_progress: 'In Progress',
-      pass: 'Pass',
-      blocked: 'Blocked',
-    },
     source: {
       git: 'Git',
       filesystem: 'Filesystem',
@@ -184,12 +178,6 @@ export const messages = {
       cannotReadProject: 'Casebook 无法读取该项目',
       scanningDescription: '正在扫描 Markdown 文件并准备结构化的用例详情视图。',
       cannotPrepareProject: 'Casebook 无法为该项目准备扫描环境。',
-    },
-    status: {
-      todo: '待处理',
-      in_progress: '进行中',
-      pass: '已通过',
-      blocked: '已阻塞',
     },
     source: {
       git: 'Git',

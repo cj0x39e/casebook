@@ -1,7 +1,7 @@
 ---
 title: 侧边栏统计面板显示正确
 platform: desktop
-status: pass
+status: todo
 priority: high
 ---
 

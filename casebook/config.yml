@@ -1,1 +1,17 @@
 tests_alias: 用例库
+statuses:
+  - id: todo
+    label:
+      en: Todo
+      zh-CN: 待处理
+    color: '#FFD400'
+  - id: pass
+    label:
+      en: Pass
+      zh-CN: 已通过
+    color: '#2FDA00'
+  - id: blocked
+    label:
+      en: Blocked
+      zh-CN: 已阻塞
+    color: '#FF0000'

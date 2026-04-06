@@ -1,7 +1,7 @@
 ---
 title: 树形视图展开折叠功能正常
 platform: desktop
-status: pass
+status: blocked
 priority: medium
 ---
 

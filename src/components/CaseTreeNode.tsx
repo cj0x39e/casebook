@@ -1,8 +1,8 @@
-import { useTranslation } from 'react-i18next'
 import type { CaseWorkflowStatus } from '../lib/casebook'
 import type { CaseFileNode, TreeNode } from '../lib/tree'
 import folderIcon from '../assets/folder.svg'
 import fileIcon from '../assets/file.svg'
+import { useApp } from '../contexts/AppContext'
 
 interface CaseTreeNodeProps {
   node: TreeNode
@@ -23,14 +23,15 @@ export function CaseTreeNode({
   onToggle,
   onSelect,
 }: CaseTreeNodeProps) {
-  const { t } = useTranslation()
+  const { statusConfig, statusLabel } = useApp()
 
   const isDirectory = node.kind === 'directory'
   const isExpanded = isDirectory ? expandedDirectories.includes(node.path) : false
   const directoryChildren = isDirectory ? node.children : []
 
-  function statusLabel(status: CaseWorkflowStatus) {
-    return t(`status.${status}`)
+  // 获取状态颜色
+  const getStatusColor = (status: CaseWorkflowStatus): string | undefined => {
+    return statusConfig.find(s => s.id === status)?.color
   }
 
   function handleDirectoryToggle() {
@@ -81,6 +82,7 @@ export function CaseTreeNode({
             type="button"
             data-selected={String((node as CaseFileNode).caseId === selectedCaseId)}
             data-status={(node as CaseFileNode).status}
+            style={{ ['--status-color' as string]: getStatusColor((node as CaseFileNode).status) }}
             title={`${node.name}\n${node.path}`}
             onClick={() => handleCaseSelect(node as CaseFileNode)}
           >

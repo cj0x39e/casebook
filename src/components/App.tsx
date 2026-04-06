@@ -3,7 +3,6 @@ import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
 import { useApp } from '../contexts/AppContext'
 import { CaseTreeNode } from './CaseTreeNode'
-import { caseWorkflowStatuses } from '../lib/casebook'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import type { AppLocale } from '../i18n'
@@ -26,10 +25,6 @@ export function App() {
     scanError,
     parsedCases,
     visibleTreeChildren,
-    showTreeFilterPanel,
-    setShowTreeFilterPanel,
-    treeFilterButtonRef,
-    treeFilterPanelRef,
     activeTreeStatusFilter,
     setActiveTreeStatusFilter,
     selectedCaseId,
@@ -42,10 +37,8 @@ export function App() {
     selectedCase,
     detailContentView,
     setDetailContentView,
-    statusUpdatePending,
     statusUpdateError,
     updateCaseStatus,
-    statusLabel,
     summaryMoreTriggerRef,
     showSummaryMeta,
     setShowSummaryMeta,
@@ -65,6 +58,7 @@ export function App() {
     parseNotesTooltipRef,
     settingsPanelRef,
     summaryMorePopoverRef,
+    statusConfig,
   } = useApp()
 
   const selectedCaseRenderedHtml = useMemo(() => {
@@ -75,33 +69,41 @@ export function App() {
   const hasParseNotes = selectedCase && selectedCase.parseNotes.length > 0
 
   const statusSummary = useMemo(() => {
-    const counts = {
-      todo: 0,
-      blocked: 0,
-      pass: 0,
+    // 动态构建 counts 和 percents 对象
+    const counts: Record<string, number> = {}
+    const percents: Record<string, number> = {}
+
+    // 初始化所有状态为 0
+    for (const config of statusConfig) {
+      counts[config.id] = 0
     }
 
+    // 统计
     for (const testCase of parsedCases) {
-      if (testCase.status === 'todo') counts.todo += 1
-      if (testCase.status === 'blocked') counts.blocked += 1
-      if (testCase.status === 'pass') counts.pass += 1
+      if (counts[testCase.status] !== undefined) {
+        counts[testCase.status] += 1
+      }
     }
 
     const total = parsedCases.length
     const percent = (count: number) => (total ? Math.round((count / total) * 100) : 0)
 
+    // 计算百分比
+    for (const config of statusConfig) {
+      percents[config.id] = percent(counts[config.id])
+    }
+
     return {
       total,
       counts,
-      percents: {
-        todo: percent(counts.todo),
-        blocked: percent(counts.blocked),
-        pass: percent(counts.pass),
-      },
+      percents,
     }
-  }, [parsedCases])
+  }, [parsedCases, statusConfig])
 
-  const filterLabel = activeTreeStatusFilter === 'all' ? 'ALL' : statusLabel(activeTreeStatusFilter)
+  // 获取状态颜色
+  const getStatusColor = (statusId: string): string | undefined => {
+    return statusConfig.find(s => s.id === statusId)?.color
+  }
 
   return (
     <div className="shell" data-screen={isHomeView ? 'home' : 'inner'}>
@@ -140,20 +142,20 @@ export function App() {
             <main className="workspace workspace--dashboard">
              <div className="sidebar__top">
                <div className="sidebar__stats">
-                 {(['pass', 'blocked', 'todo'] as const).map((status) => (
+                 {statusConfig.map((config) => (
                    <button
-                     key={status}
+                     key={config.id}
                      className="sidebar__stat"
                      type="button"
-                     data-status={status}
-                     data-active={activeTreeStatusFilter === status}
-                     onClick={() => setActiveTreeStatusFilter(status)}
+                     data-status={config.id}
+                     data-active={activeTreeStatusFilter === config.id}
+                     onClick={() => setActiveTreeStatusFilter(config.id)}
                    >
-                     <span className="sidebar__stat-count">{statusSummary.counts[status]}</span>
+                     <span className="sidebar__stat-count">{statusSummary.counts[config.id] ?? 0}</span>
                      <span className="sidebar__stat-meta">
-                       <span className="sidebar__stat-swatch" />
+                       <span className="sidebar__stat-swatch" style={{ backgroundColor: config.color }} />
                        <span className="sidebar__stat-percent">
-                         {statusSummary.percents[status]}%
+                         {statusSummary.percents[config.id] ?? 0}%
                        </span>
                      </span>
                    </button>
@@ -174,7 +176,10 @@ export function App() {
                {selectedCase && (
                  <>
                    <div className="detail-header__title-row">
-                     <span className="detail-header__status" data-status={selectedCase.status} />
+                     <span
+                       className="detail-header__status"
+                       style={{ backgroundColor: getStatusColor(selectedCase.status) }}
+                     />
                      <h2>{selectedCase.title}</h2>
                      {hasParseNotes && (
                        <button
@@ -311,15 +316,16 @@ export function App() {
 
                <div className="detail-panel__actions">
                  <div className="status-dots">
-                   {(['todo', 'blocked', 'pass'] as const).map((workflowStatus) => (
+                   {statusConfig.map((config) => (
                        <button
-                         key={workflowStatus}
+                         key={config.id}
                          className="status-dot"
                          type="button"
-                         data-status={workflowStatus}
-                         data-active={selectedCase ? String(workflowStatus === selectedCase.status) : 'false'}
-                         aria-label={statusLabel(workflowStatus)}
-                         onClick={() => updateCaseStatus(workflowStatus)}
+                         data-status={config.id}
+                         style={{ backgroundColor: config.color }}
+                         data-active={selectedCase ? String(config.id === selectedCase.status) : 'false'}
+                         aria-label={config.label[selectedLocale] || config.label['en'] || config.id}
+                         onClick={() => updateCaseStatus(config.id)}
                        />
                      ))}
                  </div>

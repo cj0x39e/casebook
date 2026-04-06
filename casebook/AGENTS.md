@@ -9,7 +9,7 @@
 
 - 必填字段：`title`、`platform`
 - 可选字段：`priority`、`status`
-- `status` 合法值：`todo`、`in_progress`、`pass`、`blocked`
+- `status` 合法值在 `casebook/config.yml` 中配置，默认为：`todo`、`pass`、`blocked`
 
 ## 正文结构
 

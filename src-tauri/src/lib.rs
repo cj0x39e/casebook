@@ -7,9 +7,25 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-const ALLOWED_CASE_STATUSES: [&str; 4] = ["todo", "in_progress", "pass", "blocked"];
 const DEFAULT_TESTS_ALIAS: &str = "用例库";
-const DEFAULT_CONFIG_CONTENT: &str = "tests_alias: 用例库\n";
+const DEFAULT_CONFIG_CONTENT: &str = r#"tests_alias: 用例库
+statuses:
+  - id: todo
+    label:
+      en: Todo
+      zh-CN: 待处理
+    color: '#FFD400'
+  - id: pass
+    label:
+      en: Pass
+      zh-CN: 已通过
+    color: '#2FDA00'
+  - id: blocked
+    label:
+      en: Blocked
+      zh-CN: 已阻塞
+    color: '#FF0000'
+"#;
 const DEFAULT_AGENTS_CONTENT: &str = r#"# Casebook 规范
 
 ## 目录约定
@@ -21,7 +37,7 @@ const DEFAULT_AGENTS_CONTENT: &str = r#"# Casebook 规范
 
 - 必填字段：`title`、`platform`
 - 可选字段：`priority`、`status`
-- `status` 合法值：`todo`、`in_progress`、`pass`、`blocked`
+- `status` 合法值在 `casebook/config.yml` 中配置
 
 ## 正文结构
 
@@ -46,6 +62,24 @@ struct AppError {
     path: Option<String>,
 }
 
+impl From<ScanError> for AppError {
+    fn from(scan_error: ScanError) -> Self {
+        AppError {
+            code: scan_error.code,
+            detail: scan_error.detail,
+            path: Some(scan_error.path),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct StatusConfig {
+    id: String,
+    label: std::collections::HashMap<String, String>,
+    color: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScannedCase {
@@ -65,6 +99,7 @@ struct ScanResult {
     casebook_root: Option<String>,
     tests_root: Option<String>,
     tests_alias: Option<String>,
+    statuses: Vec<StatusConfig>,
     cases: Vec<ScannedCase>,
     errors: Vec<ScanError>,
 }
@@ -72,6 +107,7 @@ struct ScanResult {
 #[derive(Debug, Deserialize)]
 struct CasebookConfig {
     tests_alias: Option<String>,
+    statuses: Option<Vec<StatusConfig>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,26 +167,17 @@ fn scan_casebook(project_root: String) -> AppResult<ScanResult> {
     ensure_casebook_skeleton(&project_root_path)?;
 
     let tests_root = casebook_root.join("tests");
-    let mut config_error = None;
-    let tests_alias = match read_tests_alias(&casebook_root) {
-        Ok(alias) => alias,
-        Err(error) => {
-            config_error = Some(error);
-            None
-        }
-    };
+    let (tests_alias, statuses) = read_config(&casebook_root)?;
+
     let mut result = ScanResult {
         project_root,
         casebook_root: Some(casebook_root.to_string_lossy().into_owned()),
         tests_root: None,
         tests_alias,
+        statuses,
         cases: Vec::new(),
         errors: Vec::new(),
     };
-
-    if let Some(error) = config_error {
-        result.errors.push(error);
-    }
 
     result.tests_root = Some(tests_root.to_string_lossy().into_owned());
 
@@ -208,10 +235,17 @@ fn update_case_status(
     case_path: String,
     status: String,
 ) -> AppResult<ScannedCase> {
-    let normalized_status = validate_case_status(&status)
+    let project_root_path = PathBuf::from(&project_root);
+    let casebook_root = project_root_path.join("casebook");
+
+    // 读取配置获取允许的状态列表
+    let (_, statuses) = read_config(&casebook_root)
+        .map_err(|_| app_error("config.read_failed"))?;
+    let allowed_statuses: Vec<String> = statuses.iter().map(|s| s.id.clone()).collect();
+
+    let normalized_status = validate_case_status(&status, &allowed_statuses)
         .map_err(|_| app_error_with_detail("case_status.unsupported", status.clone()))?;
 
-    let project_root_path = PathBuf::from(&project_root);
     let case_path = PathBuf::from(&case_path);
 
     if !case_path.exists() {
@@ -224,7 +258,7 @@ fn update_case_status(
 
     let original_content = fs::read_to_string(&case_path)
         .map_err(|error| app_error_with_detail("case.read_failed", error.to_string()))?;
-    let updated_content = update_case_status_in_markdown(&original_content, normalized_status)
+    let updated_content = update_case_status_in_markdown(&original_content, &normalized_status, &allowed_statuses)
         .map_err(|error| map_update_case_status_error(&error, &status))?;
 
     fs::write(&case_path, updated_content)
@@ -407,10 +441,14 @@ fn ensure_file_with_content(path: &Path, content: &str, _label: &str) -> AppResu
         .map_err(|error| app_error_with_detail("bootstrap.create_file_failed", error.to_string()))
 }
 
-fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, ScanError> {
+fn read_config(casebook_root: &Path) -> Result<(Option<String>, Vec<StatusConfig>), ScanError> {
     let config_path = casebook_root.join("config.yml");
     if !config_path.exists() {
-        return Ok(None);
+        return Err(scan_error(
+            "config.missing",
+            config_path.to_string_lossy().into_owned(),
+            Some("config.yml is required".to_string()),
+        ));
     }
 
     let content = fs::read_to_string(&config_path)
@@ -427,35 +465,53 @@ fn read_tests_alias(casebook_root: &Path) -> Result<Option<String>, ScanError> {
         )
     })?;
 
-    Ok(config.tests_alias.and_then(|value| {
+    // 检查是否有状态配置
+    let statuses = config.statuses.ok_or_else(|| {
+        scan_error(
+            "config.missing_statuses",
+            config_path.to_string_lossy().into_owned(),
+            Some("statuses configuration is required in config.yml".to_string()),
+        )
+    })?;
+
+    // 验证状态配置不为空
+    if statuses.is_empty() {
+        return Err(scan_error(
+            "config.empty_statuses",
+            config_path.to_string_lossy().into_owned(),
+            Some("statuses configuration cannot be empty".to_string()),
+        ));
+    }
+
+    let tests_alias = config.tests_alias.and_then(|value| {
         let trimmed = value.trim().to_string();
         if trimmed.is_empty() {
             None
         } else {
             Some(trimmed)
         }
-    }).or(Some(DEFAULT_TESTS_ALIAS.to_string())))
+    }).or(Some(DEFAULT_TESTS_ALIAS.to_string()));
+
+    Ok((tests_alias, statuses))
 }
 
-fn normalize_case_status(status: &str) -> Option<&'static str> {
-    match status.trim() {
-        "todo" | "待处理" => Some("todo"),
-        "in_progress" | "进行中" => Some("in_progress"),
-        "pass" | "已通过" => Some("pass"),
-        "blocked" | "已阻塞" => Some("blocked"),
-        _ => None,
+fn normalize_case_status(status: &str, allowed_statuses: &[String]) -> Option<String> {
+    let trimmed = status.trim();
+    if allowed_statuses.contains(&trimmed.to_string()) {
+        return Some(trimmed.to_string());
     }
+    // 支持中文旧状态映射
+    let legacy_map: std::collections::HashMap<&str, &str> = [
+        ("待处理", "todo"),
+        ("已通过", "pass"),
+        ("已阻塞", "blocked"),
+    ].into_iter().collect();
+    legacy_map.get(trimmed).map(|&s| s.to_string())
 }
 
-fn validate_case_status(status: &str) -> Result<&'static str, String> {
-    let normalized = normalize_case_status(status)
-        .ok_or_else(|| format!("Unsupported case status: {status}"))?;
-
-    if ALLOWED_CASE_STATUSES.contains(&normalized) {
-        Ok(normalized)
-    } else {
-        Err(format!("Unsupported case status: {status}"))
-    }
+fn validate_case_status(status: &str, allowed_statuses: &[String]) -> Result<String, String> {
+    normalize_case_status(status, allowed_statuses)
+        .ok_or_else(|| format!("Unsupported case status: {status}"))
 }
 
 fn map_update_case_status_error(error: &str, status: &str) -> AppError {
@@ -468,8 +524,8 @@ fn map_update_case_status_error(error: &str, status: &str) -> AppError {
     }
 }
 
-fn update_case_status_in_markdown(content: &str, status: &str) -> Result<String, String> {
-    let normalized_status = validate_case_status(status)?;
+fn update_case_status_in_markdown(content: &str, status: &str, allowed_statuses: &[String]) -> Result<String, String> {
+    let normalized_status = validate_case_status(status, allowed_statuses)?;
 
     match split_frontmatter(content)? {
         Some((frontmatter, body)) => {
@@ -486,7 +542,7 @@ fn update_case_status_in_markdown(content: &str, status: &str) -> Result<String,
                 }
                 Err(_) => {
                     let patched_frontmatter =
-                        update_status_in_raw_frontmatter(&frontmatter, normalized_status);
+                        update_status_in_raw_frontmatter(&frontmatter, &normalized_status);
                     Ok(format!("---\n{}---\n{}", patched_frontmatter, body))
                 }
             }
@@ -604,7 +660,8 @@ mod tests {
     #[test]
     fn updates_status_in_valid_frontmatter() {
         let content = "---\ntitle: Example\nstatus: todo\n---\n\nBody\n";
-        let updated = update_case_status_in_markdown(content, "pass").unwrap();
+        let allowed = vec!["todo".to_string(), "pass".to_string(), "blocked".to_string()];
+        let updated = update_case_status_in_markdown(content, "pass", &allowed).unwrap();
 
         assert!(updated.contains("status: pass"));
         assert!(updated.contains("title: Example"));
@@ -614,7 +671,8 @@ mod tests {
     #[test]
     fn patches_status_in_invalid_frontmatter_without_rewriting_other_fields() {
         let content = "---\nid: CB-PARSE-004\nbroken: [unterminated\n---\n\nBody\n";
-        let updated = update_case_status_in_markdown(content, "blocked").unwrap();
+        let allowed = vec!["todo".to_string(), "pass".to_string(), "blocked".to_string()];
+        let updated = update_case_status_in_markdown(content, "blocked", &allowed).unwrap();
 
         assert!(updated.contains("broken: [unterminated"));
         assert!(updated.contains("status: blocked"));
@@ -624,9 +682,10 @@ mod tests {
     #[test]
     fn replaces_existing_top_level_status_in_invalid_frontmatter() {
         let content = "---\nstatus: todo\nbroken: [unterminated\n---\n\nBody\n";
-        let updated = update_case_status_in_markdown(content, "in_progress").unwrap();
+        let allowed = vec!["todo".to_string(), "pass".to_string(), "blocked".to_string()];
+        let updated = update_case_status_in_markdown(content, "pass", &allowed).unwrap();
 
-        assert!(updated.contains("status: in_progress"));
+        assert!(updated.contains("status: pass"));
         assert!(!updated.contains("status: todo"));
         assert!(updated.contains("broken: [unterminated"));
     }
@@ -634,7 +693,8 @@ mod tests {
     #[test]
     fn returns_error_for_unclosed_frontmatter() {
         let content = "---\ntitle: Example\nstatus: todo\nBody\n";
-        let error = update_case_status_in_markdown(content, "pass").unwrap_err();
+        let allowed = vec!["todo".to_string(), "pass".to_string(), "blocked".to_string()];
+        let error = update_case_status_in_markdown(content, "pass", &allowed).unwrap_err();
 
         assert_eq!(error, "Invalid frontmatter block");
     }
@@ -642,9 +702,10 @@ mod tests {
     #[test]
     fn normalizes_legacy_chinese_status_to_english() {
         let content = "---\ntitle: Example\nstatus: 待处理\n---\n\nBody\n";
-        let updated = update_case_status_in_markdown(content, "进行中").unwrap();
+        let allowed = vec!["todo".to_string(), "pass".to_string(), "blocked".to_string()];
+        let updated = update_case_status_in_markdown(content, "已通过", &allowed).unwrap();
 
-        assert!(updated.contains("status: in_progress"));
+        assert!(updated.contains("status: pass"));
         assert!(!updated.contains("status: 待处理"));
     }
 
@@ -695,7 +756,14 @@ mod tests {
         let casebook_root = project.path().join("casebook");
         let tests_root = casebook_root.join("tests");
         let config_path = casebook_root.join("config.yml");
-        let custom_config = "tests_alias: 自定义用例\n";
+        let custom_config = r#"tests_alias: 自定义用例
+statuses:
+  - id: todo
+    label:
+      en: Todo
+      zh-CN: 待处理
+    color: '#FFD400'
+"#;
 
         fs::create_dir_all(&tests_root).unwrap();
         fs::write(&config_path, custom_config).unwrap();
@@ -704,7 +772,7 @@ mod tests {
 
         assert_eq!(fs::read_to_string(&config_path).unwrap(), custom_config);
         assert_eq!(result.tests_alias, Some("自定义用例".to_string()));
-        assert!(result.errors.is_empty());
+        assert!(!result.statuses.is_empty());
     }
 }
 

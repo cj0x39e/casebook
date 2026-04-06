@@ -16,6 +16,7 @@ import type {
   ParsedCase,
   RawScannedCase,
   RawScanResult,
+  StatusConfig,
 } from '../lib/casebook'
 import {
   parseCase,
@@ -75,6 +76,7 @@ interface AppContextValue {
   warningSummary: string | null
   selectedLocale: AppLocale
   localeOptions: Array<{ value: AppLocale; labelKey: 'locale.english' | 'locale.chinese' }>
+  statusConfig: StatusConfig[]
 
   // Actions
   openProjectDirectory: () => Promise<void>
@@ -147,10 +149,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const currentLocale = i18n.language as AppLocale
 
+  // 状态配置
+  const statusConfig = useMemo<StatusConfig[]>(() => {
+    return scanResult?.statuses ?? []
+  }, [scanResult])
+
+  // 允许的状态 ID 列表
+  const allowedStatuses = useMemo(() => statusConfig.map(s => s.id), [statusConfig])
+
   const parsedCases = useMemo<ParsedCase[]>(() => {
     if (!scanResult) return []
-    return scanResult.cases.map((rawCase) => parseCase(rawCase, currentLocale))
-  }, [scanResult, currentLocale])
+    return scanResult.cases.map((rawCase) => parseCase(rawCase, currentLocale, allowedStatuses))
+  }, [scanResult, currentLocale, allowedStatuses])
 
   const parsedCaseMap = useMemo(() => {
     return new Map(parsedCases.map((testCase) => [testCase.caseId, testCase]))
@@ -348,7 +358,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   )
 
   function statusLabel(status: CaseWorkflowStatus) {
-    return t(`status.${status}`)
+    const config = statusConfig.find(s => s.id === status)
+    if (config?.label) {
+      return config.label[currentLocale] || config.label['en'] || status
+    }
+    return status
   }
 
   function sourceLabel(source: ParsedCase['summary']['source']) {
@@ -510,6 +524,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     warningSummary,
     selectedLocale,
     localeOptions,
+    statusConfig,
 
     // Actions
     openProjectDirectory,

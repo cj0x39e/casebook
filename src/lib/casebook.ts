@@ -3,8 +3,16 @@ import { defaultLocale, type AppLocale } from '../i18n'
 
 export type UpdatedAtSource = 'git' | 'filesystem'
 export type ParseStatus = 'valid' | 'partial' | 'invalid'
-export const caseWorkflowStatuses = ['todo', 'in_progress', 'pass', 'blocked'] as const
-export type CaseWorkflowStatus = (typeof caseWorkflowStatuses)[number]
+
+// 状态配置类型
+export interface StatusConfig {
+  id: string
+  label: Record<string, string>
+  color: string
+}
+
+// 动态状态类型，不再硬编码
+export type CaseWorkflowStatus = string
 
 export interface ScanError {
   path: string
@@ -33,6 +41,7 @@ export interface RawScanResult {
   casebookRoot: string | null
   testsRoot: string | null
   testsAlias: string | null
+  statuses: StatusConfig[]
   cases: RawScannedCase[]
   errors: ScanError[]
 }
@@ -129,14 +138,11 @@ function splitFrontmatter(content: string): FrontmatterParseResult {
   return { data, body, errors }
 }
 
-function isCaseWorkflowStatus(value: unknown): value is CaseWorkflowStatus {
-  return (
-    typeof value === 'string' &&
-    caseWorkflowStatuses.includes(value.trim() as CaseWorkflowStatus)
-  )
+function isValidStatus(value: string, allowedStatuses: string[]): boolean {
+  return allowedStatuses.includes(value.trim())
 }
 
-function normalizeCaseWorkflowStatus(value: unknown): CaseWorkflowStatus | null {
+function normalizeCaseWorkflowStatus(value: unknown, allowedStatuses: string[]): CaseWorkflowStatus | null {
   if (typeof value !== 'string') {
     return null
   }
@@ -146,18 +152,23 @@ function normalizeCaseWorkflowStatus(value: unknown): CaseWorkflowStatus | null 
     return null
   }
 
-  if (isCaseWorkflowStatus(normalized)) {
+  if (isValidStatus(normalized, allowedStatuses)) {
     return normalized
   }
 
-  const legacyStatusMap: Record<string, CaseWorkflowStatus> = {
+  // 支持中文旧状态映射
+  const legacyStatusMap: Record<string, string> = {
     待处理: 'todo',
-    进行中: 'in_progress',
     已通过: 'pass',
     已阻塞: 'blocked',
   }
 
-  return legacyStatusMap[normalized] ?? null
+  const mapped = legacyStatusMap[normalized]
+  if (mapped && isValidStatus(mapped, allowedStatuses)) {
+    return mapped
+  }
+
+  return null
 }
 
 export function formatUpdatedAt(updatedAt: number | null, locale: AppLocale = defaultLocale) {
@@ -174,7 +185,11 @@ export function formatUpdatedAt(updatedAt: number | null, locale: AppLocale = de
   }).format(new Date(updatedAt))
 }
 
-export function parseCase(rawCase: RawScannedCase, locale: AppLocale = defaultLocale): ParsedCase {
+export function parseCase(
+  rawCase: RawScannedCase,
+  locale: AppLocale = defaultLocale,
+  allowedStatuses: string[] = [],
+): ParsedCase {
   const fallbackTitle = filenameFromPath(rawCase.relativePath)
   const fallbackPlatform = platformFromPath(rawCase.relativePath)
   const frontmatter = splitFrontmatter(rawCase.content)
@@ -196,6 +211,9 @@ export function parseCase(rawCase: RawScannedCase, locale: AppLocale = defaultLo
       : 'valid'
   const renderBody = normalizeLineBreaks(frontmatter.body || rawCase.content)
 
+  // 如果 allowedStatuses 为空，使用原始状态值；否则使用第一个状态作为默认值
+  const defaultStatus = allowedStatuses.length > 0 ? allowedStatuses[0] : (typeof data.status === 'string' ? data.status : 'todo')
+
   return {
     ...rawCase,
     id: rawCase.relativePath,
@@ -203,7 +221,7 @@ export function parseCase(rawCase: RawScannedCase, locale: AppLocale = defaultLo
     platform: isNonEmptyString(data.platform) ? data.platform.trim() : fallbackPlatform,
     priority: isNonEmptyString(data.priority) ? data.priority.trim() : null,
     createdAtLabel: formatUpdatedAt(rawCase.createdAt, locale),
-    status: normalizeCaseWorkflowStatus(data.status) ?? 'todo',
+    status: normalizeCaseWorkflowStatus(data.status, allowedStatuses) ?? defaultStatus,
     parseStatus,
     parseNotes,
     updatedAtLabel: formatUpdatedAt(rawCase.updatedAt, locale),
