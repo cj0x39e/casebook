@@ -1,32 +1,32 @@
 ---
-title: 树形视图展开折叠功能正常
+title: Tree view expand and collapse works correctly
 platform: desktop
-status: pass
+status: todo
 priority: medium
 ---
 
-## 前置条件
+## Preconditions
 
-1. 已打开 Casebook 应用
-2. 已加载包含多层目录结构的测试项目
-3. 处于 Dashboard 视图
+1. Casebook application is open
+2. A test project with multi-level directory structure has been loaded
+3. Currently on the Dashboard view
 
-## 步骤
+## Steps
 
-1. 在左侧树形面板查看目录结构
-2. 点击带有 `▶` 箭头的文件夹展开其子目录
-3. 点击带有 `▼` 箭头的文件夹折叠其子目录
-4. 点击文件类型测试用例
-5. 观察右侧详情面板
+1. View the directory structure in the left tree panel
+2. Click on a folder with a `▶` arrow to expand its subdirectory
+3. Click on a folder with a `▼` arrow to collapse its subdirectory
+4. Click on a file-type test case
+5. Observe the right detail panel
 
-## 预期结果
+## Expected Results
 
-1. 文件夹显示文件夹图标和折叠箭头 `▶`
-2. 点击展开后显示子目录内容，箭头变为 `▼`
-3. 点击折叠后隐藏子目录内容，箭头恢复为 `▶`
-4. 文件显示文件图标和左侧状态色条
-5. 状态色条颜色与测试状态一致：
-   - 绿色：pass
-   - 红色：blocked
-   - 黄色：todo
-   - 蓝色：in_progress
+1. Folders display a folder icon and a collapse arrow `▶`
+2. After expanding, subdirectory contents are shown and the arrow changes to `▼`
+3. After collapsing, subdirectory contents are hidden and the arrow reverts to `▶`
+4. Files display a file icon and a left-side status color bar
+5. Status color bar colors match the test status:
+   - Green: pass
+   - Red: blocked
+   - Yellow: todo
+   - Blue: in_progress

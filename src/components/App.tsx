@@ -108,6 +108,7 @@ export function App() {
 
   return (
     <div className="shell" data-screen={isHomeView ? 'home' : 'inner'}>
+      <div className="titlebar-drag-region" data-tauri-drag-region />
       {isHomeView ? (
         <main className="home">
           <p className="home__greeting">{t('home.greeting')}</p>
@@ -455,7 +456,7 @@ export function App() {
                   </option>
                 ))}
               </select>
-              <p className="settings-panel__placeholder">{t('settings.placeholder')}</p>
+
             </section>
           </div>,
           document.body

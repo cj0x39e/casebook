@@ -424,10 +424,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   function updateSettingsPanelPosition() {
     if (!settingsButtonRef.current) return
     const rect = settingsButtonRef.current.getBoundingClientRect()
-    const margin = 28
     setSettingsPanelStyle({
-      left: `${Math.max(margin, rect.left)}px`,
-      bottom: `${Math.max(16, window.innerHeight - rect.top + 10)}px`,
+      left: `${rect.left}px`,
+      bottom: `${Math.max(16, window.innerHeight - rect.top + 2)}px`,
     })
   }
 

@@ -1,18 +1,18 @@
-# Casebook 规范
+# Casebook Specification
 
-## 目录约定
+## Directory Conventions
 
-- 所有用例统一存放在 `casebook/tests/`
-- Casebook 只扫描 `casebook/tests/` 下的 `.md` 文件
+- All test cases are stored under `casebook/tests/`
+- Casebook only scans `.md` files under `casebook/tests/`
 
 ## Frontmatter
 
-- 必填字段：`title`、`platform`
-- 可选字段：`priority`、`status`
-- `status` 合法值在 `casebook/config.yml` 中配置，默认为：`todo`、`pass`、`blocked`
+- Required fields: `title`, `platform`
+- Optional fields: `priority`, `status`
+- Valid `status` values are configured in `casebook/config.yml`, defaults: `todo`, `pass`, `blocked`
 
-## 正文结构
+## Body Structure
 
-- 推荐使用 `## 前置条件`
-- 推荐使用 `## 步骤`
-- 推荐使用 `## 预期结果`
+- Recommended section: `## Preconditions`
+- Recommended section: `## Steps`
+- Recommended section: `## Expected Results`

@@ -80,9 +80,19 @@ code {
   height: 100%;
 }
 
+.titlebar-drag-region {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  z-index: 50;
+}
+
 .shell {
   height: 100vh;
   padding: 0;
+  padding-top: 28px;
   overflow: hidden;
 }
 
@@ -516,14 +526,14 @@ code {
   position: relative;
   border: 1px solid #e5e5e5;
   background: #ffffff;
-  width: 37px;
-  height: 32px;
+  width: 42px;
+  height: 35px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
   gap: 2px;
-  padding: 2px 4px;
+  padding: 3px 5px;
   cursor: pointer;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
@@ -578,8 +588,8 @@ code {
   border: 1px solid #bfbaba;
   background: #d9d9d9;
   color: #bfbaba;
-  width: 37px;
-  height: 32px;
+  width: 42px;
+  height: 35px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -986,7 +996,8 @@ code {
   width: min(22rem, calc(100vw - 56px));
   padding: 16px;
   border: 1px solid #e5e5e5;
-  border-radius: 10px;
+  border-radius: 0;
+  padding-bottom: 32px;
   background: #f3f3f3;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
   display: flex;
@@ -1013,10 +1024,11 @@ code {
   font-size: 0.82rem;
   line-height: 1.5;
   word-break: break-word;
-  padding: 8px 10px;
-  background: #ffffff;
-  border: 1px solid #e5e5e5;
-  border-radius: 6px;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #e5e5e5;
+  border-radius: 0;
 }
 
 .settings-panel__path {
@@ -1032,24 +1044,25 @@ code {
 }
 
 .settings-panel__actions .secondary-button {
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0;
   font-size: 0.8rem;
-  border: 1px solid #d5d5d5;
-  background: #ffffff;
-  border-radius: 6px;
+  border: none;
+  background: transparent;
+  border-radius: 0;
 }
 
 .settings-panel__actions .secondary-button:hover {
-  background: #f9f9f9;
-  border-color: #c5c5c5;
+  background: transparent;
+  opacity: 0.6;
 }
 
 .settings-panel select {
   appearance: none;
-  padding: 0.5rem 2rem 0.5rem 0.75rem;
-  border: 1px solid #d5d5d5;
-  border-radius: 6px;
-  background: #ffffff;
+  padding: 0.5rem 2rem 0.5rem 0;
+  border: none;
+  border-bottom: 1px solid #d5d5d5;
+  border-radius: 0;
+  background: transparent;
   color: #111111;
   font-size: 0.82rem;
   line-height: 1.4;

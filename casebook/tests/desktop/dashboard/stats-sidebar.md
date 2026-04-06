@@ -1,28 +1,28 @@
 ---
-title: 侧边栏统计面板显示正确
+title: Sidebar stats panel displays correctly
 platform: desktop
 status: pass
 priority: high
 ---
 
-## 前置条件
+## Preconditions
 
-1. 已打开 Casebook 应用
-2. 已加载包含测试用例的项目目录
-3. 处于 Dashboard 视图
+1. Casebook application is open
+2. A project directory containing test cases has been loaded
+3. Currently on the Dashboard view
 
-## 步骤
+## Steps
 
-1. 在 Dashboard 页面查看左侧侧边栏
-2. 检查统计卡片显示
-3. 点击不同状态的统计按钮
-4. 观察测试用例列表过滤效果
+1. View the left sidebar on the Dashboard page
+2. Check the stats card display
+3. Click different status stat buttons
+4. Observe the test case list filtering effect
 
-## 预期结果
+## Expected Results
 
-1. 侧边栏显示三个统计卡片：
-   - PASS（绿色）：显示通过测试的数量和百分比
-   - BLOCKED（黄色）：显示被阻塞测试的数量和百分比
-   - TODO（灰色）：显示待办测试的数量和百分比
-2. 点击状态按钮后，测试用例树仅显示对应状态的用例
-3. 百分比计算正确：(该状态数量 / 总数) × 100%
+1. The sidebar displays three stats cards:
+   - PASS (green): shows the count and percentage of passed tests
+   - BLOCKED (yellow): shows the count and percentage of blocked tests
+   - TODO (gray): shows the count and percentage of pending tests
+2. After clicking a status button, the test case tree shows only cases with the corresponding status
+3. Percentages are calculated correctly: (count of status / total) × 100%
