@@ -477,7 +477,7 @@ code {
 
 .workspace {
   display: grid;
-  grid-template-columns: 348px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 0;
   flex: 1;
   min-height: 0;
@@ -496,6 +496,7 @@ code {
   background: #f3f3f3;
   border-bottom: 1px solid #e5e5e5;
   border-right: 1px solid #e5e5e5;
+  min-width: 0;
 }
 
 .detail-header {
@@ -512,6 +513,7 @@ code {
   background: #f3f3f3;
   border-right: 1px solid #e5e5e5;
   min-height: 0;
+  min-width: 0;
 }
 
 .sidebar__stats {
@@ -640,6 +642,7 @@ code {
   display: flex;
   align-items: center;
   padding: 0 16px;
+  min-width: 0;
 }
 
 .sidebar__settings-button {
@@ -955,8 +958,8 @@ code {
 }
 
 .tree-view__icon {
-  width: 18px;
-  height: 18px;
+  width: 12px;
+  height: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

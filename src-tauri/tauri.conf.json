@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Casebook",
-        "width": 1200,
-        "height": 800,
+        "width": 880,
+        "height": 600,
         "minWidth": 960,
         "minHeight": 680,
         "resizable": true,
