@@ -843,7 +843,7 @@ code {
   bottom: 0;
   width: 1px;
   border-radius: 999px;
-  background: #e5e5e5;
+  background: #e8e8e8;
 }
 
 .tree-view__scaffold[data-last-child='true'] .tree-view__scaffold-line {
@@ -856,9 +856,9 @@ code {
   top: 50%;
   width: 0.82rem;
   height: 0.68rem;
-  border-left: 1px solid #e5e5e5;
-  border-bottom: 1px solid #e5e5e5;
-  border-bottom-left-radius: 9px;
+  border-left: 1px solid #e8e8e8;
+  border-bottom: 1px solid #e8e8e8;
+  border-bottom-left-radius: 6px;
   transform: translateY(-92%);
 }
 
@@ -867,15 +867,15 @@ code {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 4px 4px;
+  padding: 3px 6px;
   border: 0;
   background: transparent;
   text-align: left;
   color: var(--ink);
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 6px;
   transition:
     background-color 160ms ease,
     color 160ms ease;
@@ -891,19 +891,48 @@ code {
 }
 
 .tree-view__row--directory {
-  min-height: 32px;
-  font-size: 0.9rem;
+  min-height: 28px;
+  font-size: 0.88rem;
   font-weight: 500;
 }
 
 .tree-view__row--case {
-  min-height: 32px;
+  min-height: 28px;
   color: rgba(17, 17, 17, 0.9);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  position: relative;
+  padding-left: 8px;
 }
 
 .tree-view__row--case[data-selected='true'] {
-  background: rgba(17, 17, 17, 0.08);
+  background: rgba(17, 17, 17, 0.06);
+}
+
+.tree-view__row--case::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.tree-view__row--case[data-status='pass']::before {
+  background: #22c55e;
+}
+
+.tree-view__row--case[data-status='blocked']::before {
+  background: #ef4444;
+}
+
+.tree-view__row--case[data-status='todo']::before {
+  background: #eab308;
+}
+
+.tree-view__row--case[data-status='in_progress']::before {
+  background: #3b82f6;
 }
 
 .tree-view__subtree {
@@ -919,7 +948,7 @@ code {
   bottom: 0.82rem;
   width: 1px;
   border-radius: 999px;
-  background: #e5e5e5;
+  background: #e8e8e8;
 }
 
 .tree-view__subtree > .tree-view__group {
@@ -928,19 +957,23 @@ code {
 
 .tree-view__arrow {
   flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  color: #98a4b8;
+  width: 14px;
+  height: 14px;
+  color: #9ca3af;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.8;
+  font-size: 9px;
+  line-height: 1;
+  transition: transform 120ms ease;
 }
 
-.tree-view__arrow img {
-  width: 100%;
-  height: 100%;
-  display: block;
+.tree-view__arrow[data-expanded='true'] {
+  transform: rotate(0deg);
+}
+
+.tree-view__arrow[data-expanded='false'] {
+  transform: rotate(0deg);
 }
 
 .tree-view__arrow--spacer {
@@ -948,8 +981,8 @@ code {
 }
 
 .tree-view__icon {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -959,6 +992,7 @@ code {
   width: 100%;
   height: 100%;
   display: block;
+  opacity: 0.75;
 }
 
 .tree-view__label {
