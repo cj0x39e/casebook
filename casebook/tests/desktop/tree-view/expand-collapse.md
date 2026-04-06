@@ -1,7 +1,7 @@
 ---
 title: Tree view expand and collapse works correctly
 platform: desktop
-status: todo
+status: pass
 priority: medium
 ---
 
