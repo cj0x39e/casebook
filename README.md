@@ -4,38 +4,37 @@
   <img src="./src-tauri/icons/icon.png" alt="Casebook logo" width="160" height="160" />
 </p>
 
-Casebook is a desktop app for browsing and maintaining Markdown-native test cases that live
-inside your repository.
+Casebook is a desktop app for browsing and maintaining Markdown test cases stored inside your repository.
+It keeps the case library close to the codebase, with `casebook/tests` as the source of truth.
 
-Instead of pushing QA assets into a separate tool, Casebook treats test cases as versioned project
-files. Each project keeps its own case library under `casebook/tests`, and the app turns that
-directory into a searchable, readable desktop workspace with parsing, rendering, timestamps, and
-status updates.
+Instead of moving QA content into a separate tool, Casebook turns plain-text case files into a readable desktop workspace with structure, rendering, timestamps, and workflow status updates.
+
+## Preview
+
+<p align="center">
+  <img src="./src/assets/bookcase_home.png" alt="Casebook home screen" width="48%" />
+  <img src="./src/assets/bookcase_dashboard.png" alt="Casebook dashboard" width="48%" />
+</p>
 
 ## Why Casebook
 
-Casebook is built for teams that want test cases to stay close to the codebase:
-
-- Markdown files can be reviewed, diffed, and versioned with Git.
-- Test cases live next to the product context they describe.
-- A local desktop app provides a better reading and maintenance experience than opening raw files.
-- The case library stays portable because the source of truth is still plain text in the repo.
+- Test cases stay in Git as plain Markdown files.
+- The case library lives next to the product context it describes.
+- The desktop UI is easier to read and maintain than raw files.
+- Your source of truth remains portable and repo-native.
 
 ## What It Does
 
-Casebook currently supports the following workflow:
-
-- Open any local project directory from the desktop app.
-- Bootstrap a minimal `casebook/` structure if the selected project does not have one yet.
-- Recursively scan `casebook/tests` for Markdown case files.
-- Parse frontmatter and render Markdown content in the app.
-- Surface parse warnings when metadata is incomplete or invalid.
-- Prefer Git history for timestamps and fall back to filesystem metadata when needed.
-- Update case workflow status directly from the UI.
+- Open a local project directory.
+- Bootstrap a minimal `casebook/` structure when missing.
+- Scan `casebook/tests` recursively for Markdown case files.
+- Render case content and surface parse warnings.
+- Show created and updated timestamps for each case.
+- Update case workflow status directly from the app.
 
 ## Project Structure
 
-Casebook expects each project to keep its case library under a `casebook/` directory:
+Casebook reads cases from a `casebook/` directory inside your project:
 
 ```text
 your-project/
@@ -45,49 +44,21 @@ your-project/
         └── ...
 ```
 
-`casebook/tests/` is the source of truth for case files.
-
-Current structure rules:
-
-- Casebook scans files recursively under `casebook/tests/`.
-- Only `.md` files are treated as cases.
-- Case IDs are derived from each file's relative path under `casebook/tests/`.
-- `casebook/config.yml` currently supports `tests_alias`, which is used as the library label in the UI.
-
-When you open a project that does not contain `casebook/`, the app bootstraps the minimal skeleton
-required for scanning:
-
-- `casebook/`
-- `casebook/tests/`
-- `casebook/config.yml`
-- `casebook/AGENTS.md`
+`casebook/tests/` is the source of truth for all case files.
 
 ## Case Format
 
-Each case is a Markdown file with optional YAML frontmatter.
+Each case is a Markdown file with YAML frontmatter.
 
-### Required frontmatter
+Required fields:
 
 - `title`
 - `platform`
 
-### Optional frontmatter
+Optional fields:
 
 - `priority`
 - `status`
-
-### Supported status values
-
-- `todo`
-- `in_progress`
-- `pass`
-- `blocked`
-
-### Recommended body sections
-
-- `## Preconditions`
-- `## Steps`
-- `## Expected Result`
 
 Example:
 
@@ -99,11 +70,6 @@ priority: P1
 status: todo
 ---
 
-## Preconditions
-
-- The project exists on disk.
-- The user can access the project directory.
-
 ## Steps
 
 1. Launch Casebook.
@@ -113,118 +79,5 @@ status: todo
 ## Expected Result
 
 - Casebook displays the library tree.
-- Markdown cases are available in the detail view.
+- The case is available in the detail view.
 ```
-
-Parsing is intentionally tolerant:
-
-- Missing metadata produces warnings instead of making the file unreadable.
-- Missing `title` falls back to the filename.
-- Missing `platform` falls back to the top-level path segment when possible.
-- Invalid frontmatter is surfaced as a parse problem, but the file content can still be shown.
-
-## How Casebook Reads Data
-
-For each discovered case file, Casebook records:
-
-- relative path inside `casebook/tests/`
-- absolute path on disk
-- raw Markdown content
-- created timestamp
-- updated timestamp
-- update source label
-
-Timestamp behavior:
-
-- `updated_at` prefers Git history when available
-- otherwise it falls back to filesystem modification time
-- `created_at` is derived from the first Git commit seen for that file when history exists
-
-## Requirements
-
-To run or build the app locally, you need:
-
-- Node.js
-- npm
-- Rust
-- Tauri build prerequisites for your platform
-
-The repository uses:
-
-- Vue 3 for the frontend
-- Tauri 2 for the desktop shell
-- Rust for filesystem scanning and status updates
-
-## Development
-
-Install dependencies and start the desktop app in development mode:
-
-```bash
-npm install
-npm run tauri:dev
-```
-
-Useful scripts:
-
-```bash
-npm run dev
-npm run build
-npm run tauri:build
-```
-
-## Production Build
-
-To verify the frontend and Rust code locally:
-
-```bash
-npm run build
-cargo check --manifest-path src-tauri/Cargo.toml
-```
-
-To build desktop bundles through Tauri:
-
-```bash
-npm run tauri:build
-```
-
-## Release Workflow
-
-This repository publishes desktop bundles to GitHub Releases through
-[`/.github/workflows/release.yml`](./.github/workflows/release.yml).
-
-Current release behavior:
-
-- pushing a tag that matches `v*` triggers an automated release build
-- the workflow builds on macOS and Windows
-- release assets are uploaded to GitHub Releases
-- the release tag must match the version in `src-tauri/tauri.conf.json`
-
-### Tag-based release
-
-1. Update `src-tauri/tauri.conf.json` so `version` matches the release you want to publish.
-2. Commit and push your changes.
-3. Create and push a version tag in the form `vX.Y.Z`.
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-### Manual release dispatch
-
-The same workflow also supports manual dispatch from the GitHub Actions UI.
-
-When running it manually:
-
-- choose the `Release` workflow
-- select the branch to run from
-- provide the required `tag` input, for example `v0.1.0`
-
-The workflow uses that tag for version validation, release naming, and asset upload.
-
-## Current Notes
-
-- Casebook is currently a desktop app built with Vue and Tauri.
-- The automated GitHub Release workflow currently targets macOS and Windows.
-- The top-level README documents the current repository contract and app behavior; it should stay in
-  sync with `src-tauri/tauri.conf.json`, `.github/workflows/release.yml`, and the case parsing logic.
