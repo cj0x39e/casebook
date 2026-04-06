@@ -10,6 +10,7 @@ import appIcon from '../../src-tauri/icons/128x128.png'
 import goIcon from '../assets/go.svg'
 import passWordmark from '../assets/PASS.svg'
 import settingIcon from '../assets/setting.svg'
+import { useAppVersion } from '../lib/appVersion'
 
 const markdownRenderer = new MarkdownIt({
   html: false,
@@ -18,6 +19,7 @@ const markdownRenderer = new MarkdownIt({
 
 export function App() {
   const { t } = useTranslation()
+  const appVersion = useAppVersion()
   const {
     isHomeView,
     warningSummary,
@@ -130,7 +132,7 @@ export function App() {
             <footer className="home-card__footer">
               <img className="home-brand-mark" src={appIcon} alt="" aria-hidden="true" />
               <p className="home-brand-name">{t('brand.casebook')}</p>
-              <p className="home-brand-version">{t('home.version')}</p>
+              <p className="home-brand-version">{appVersion}</p>
             </footer>
           </section>
 
@@ -312,7 +314,7 @@ export function App() {
                    <img src={settingIcon} alt="" className="sidebar__settings-icon" />
                  </button>
                  <span className="sidebar__version">
-                   {t('brand.casebook')} {t('home.version')}
+                   {t('brand.casebook')} {appVersion}
                  </span>
                </div>
 

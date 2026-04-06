@@ -14,7 +14,6 @@ export const messages = {
       heroWord: 'PASS',
       openProjectDirectory: 'Open Project',
       caption: 'Creates casebook/tests when missing and reads the alias from casebook/config.yml.',
-      version: '0.0.1',
     },
     tree: {
       library: 'Library',
@@ -134,7 +133,6 @@ export const messages = {
       heroWord: 'PASS',
       openProjectDirectory: '打开项目',
       caption: '如果缺少 casebook/tests 会自动创建，并从 casebook/config.yml 读取别名。',
-      version: '0.0.1',
     },
     tree: {
       library: '用例库',
