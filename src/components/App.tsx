@@ -434,14 +434,13 @@ export function App() {
 
             <section className="settings-panel__section">
               <p className="panel__label">{t('settings.casebook')}</p>
-              <label className="summary-more__label" htmlFor="locale-select">
+              <label className="settings-panel__label" htmlFor="locale-select">
                 {t('locale.label')}
               </label>
               <select
                 id="locale-select"
                 value={selectedLocale}
                 onChange={(e) => setSelectedLocale(e.target.value as AppLocale)}
-                className="tree-filter__button"
               >
                 {localeOptions.map((localeOption) => (
                   <option key={localeOption.value} value={localeOption.value}>
