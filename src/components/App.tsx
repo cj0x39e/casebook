@@ -9,6 +9,7 @@ import type { AppLocale } from '../i18n'
 import appIcon from '../../src-tauri/icons/128x128.png'
 import goIcon from '../assets/go.svg'
 import passWordmark from '../assets/PASS.svg'
+import settingIcon from '../assets/setting.svg'
 
 const markdownRenderer = new MarkdownIt({
   html: false,
@@ -307,7 +308,7 @@ export function App() {
                    aria-expanded={showSettingsPanel}
                    onClick={() => setShowSettingsPanel(!showSettingsPanel)}
                  >
-                   <span className="sidebar__settings-icon">⚙</span>
+                   <img src={settingIcon} alt="" className="sidebar__settings-icon" />
                  </button>
                  <span className="sidebar__version">
                    {t('brand.casebook')} {t('home.version')}

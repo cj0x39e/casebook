@@ -654,8 +654,7 @@ code {
 
 .sidebar__version {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 16px;
   font-size: 0.78rem;
   color: #d1d1d1;
 }
