@@ -87,7 +87,7 @@ export function CaseTreeNode({
           >
             <span className="tree-view__arrow tree-view__arrow--spacer" aria-hidden="true" />
             <span className="tree-view__icon" aria-hidden="true">
-              <img src={fileIcon} alt="" />
+              <span className="tree-view__status-dot" data-status={(node as CaseFileNode).status} />
             </span>
             <span className="tree-view__label">{node.name}</span>
             <span className="tree-view__sr">{statusLabel((node as CaseFileNode).status)}</span>
