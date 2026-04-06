@@ -492,7 +492,7 @@ code {
 .sidebar__top {
   grid-column: 1;
   grid-row: 1;
-  padding: 22px 16px 8px;
+  padding: 32px 16px 8px;
   background: #f3f3f3;
   border-bottom: 1px solid #e5e5e5;
   border-right: 1px solid #e5e5e5;
@@ -541,9 +541,9 @@ code {
 }
 
 .sidebar__stat[data-active='true']::before {
-  content: '▼';
+  content: '▲';
   position: absolute;
-  top: -16px;
+  bottom: -16px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
@@ -608,9 +608,9 @@ code {
 }
 
 .sidebar__filter-button[data-active='true']::before {
-  content: '▼';
+  content: '▲';
   position: absolute;
-  top: -16px;
+  bottom: -16px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
