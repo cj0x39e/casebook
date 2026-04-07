@@ -77,6 +77,7 @@ interface AppContextValue {
   selectedLocale: AppLocale
   localeOptions: Array<{ value: AppLocale; labelKey: 'locale.english' | 'locale.chinese' }>
   statusConfig: StatusConfig[]
+  priorityConfig: StatusConfig[]
 
   // Actions
   openProjectDirectory: () => Promise<void>
@@ -86,6 +87,8 @@ interface AppContextValue {
   toggleDirectory: (path: string) => void
   updateCaseStatus: (nextStatus: CaseWorkflowStatus) => Promise<void>
   statusLabel: (status: CaseWorkflowStatus) => string
+  priorityLabel: (priorityId: string) => string
+  priorityColor: (priorityId: string) => string
   sourceLabel: (source: ParsedCase['summary']['source']) => string
   translateParseNote: (note: ParsedCase['parseNotes'][number]) => string
   extractErrorMessage: (error: unknown, fallbackKey: string) => string
@@ -157,10 +160,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // 允许的状态 ID 列表
   const allowedStatuses = useMemo(() => statusConfig.map(s => s.id), [statusConfig])
 
+  const priorityConfig = useMemo<StatusConfig[]>(() => {
+    return scanResult?.priorities ?? []
+  }, [scanResult])
+
+  const allowedPriorities = useMemo(() => priorityConfig.map(p => p.id), [priorityConfig])
+
   const parsedCases = useMemo<ParsedCase[]>(() => {
     if (!scanResult) return []
-    return scanResult.cases.map((rawCase) => parseCase(rawCase, currentLocale, allowedStatuses))
-  }, [scanResult, currentLocale, allowedStatuses])
+    return scanResult.cases.map((rawCase) => parseCase(rawCase, currentLocale, allowedStatuses, allowedPriorities))
+  }, [scanResult, currentLocale, allowedStatuses, allowedPriorities])
 
   const parsedCaseMap = useMemo(() => {
     return new Map(parsedCases.map((testCase) => [testCase.caseId, testCase]))
@@ -365,6 +374,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return status
   }
 
+  function priorityLabel(priorityId: string): string {
+    const config = priorityConfig.find(p => p.id === priorityId)
+    if (!config) return priorityId
+    return config.label[currentLocale] ?? config.label['en'] ?? priorityId
+  }
+
+  function priorityColor(priorityId: string): string {
+    const config = priorityConfig.find(p => p.id === priorityId)
+    return config?.color ?? '#c4c4c4'
+  }
+
   function sourceLabel(source: ParsedCase['summary']['source']) {
     return t(`source.${source}`)
   }
@@ -524,6 +544,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     selectedLocale,
     localeOptions,
     statusConfig,
+    priorityConfig,
 
     // Actions
     openProjectDirectory,
@@ -533,6 +554,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toggleDirectory,
     updateCaseStatus,
     statusLabel,
+    priorityLabel,
+    priorityColor,
     sourceLabel,
     translateParseNote,
     extractErrorMessage,

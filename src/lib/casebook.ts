@@ -42,6 +42,7 @@ export interface RawScanResult {
   testsRoot: string | null
   testsAlias: string | null
   statuses: StatusConfig[]
+  priorities: StatusConfig[]
   cases: RawScannedCase[]
   errors: ScanError[]
 }
@@ -185,10 +186,32 @@ export function formatUpdatedAt(updatedAt: number | null, locale: AppLocale = de
   }).format(new Date(updatedAt))
 }
 
+function normalizePriority(value: unknown, allowedPriorities: string[]): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const normalized = value.trim()
+  if (!normalized) {
+    return null
+  }
+
+  if (allowedPriorities.length === 0) {
+    return normalized
+  }
+
+  if (allowedPriorities.includes(normalized)) {
+    return normalized
+  }
+
+  return null
+}
+
 export function parseCase(
   rawCase: RawScannedCase,
   locale: AppLocale = defaultLocale,
   allowedStatuses: string[] = [],
+  allowedPriorities: string[] = [],
 ): ParsedCase {
   const fallbackTitle = filenameFromPath(rawCase.relativePath)
   const fallbackPlatform = platformFromPath(rawCase.relativePath)
@@ -219,7 +242,7 @@ export function parseCase(
     id: rawCase.relativePath,
     title: isNonEmptyString(data.title) ? data.title.trim() : fallbackTitle,
     platform: isNonEmptyString(data.platform) ? data.platform.trim() : fallbackPlatform,
-    priority: isNonEmptyString(data.priority) ? data.priority.trim() : null,
+    priority: normalizePriority(data.priority, allowedPriorities),
     createdAtLabel: formatUpdatedAt(rawCase.createdAt, locale),
     status: normalizeCaseWorkflowStatus(data.status, allowedStatuses) ?? defaultStatus,
     parseStatus,

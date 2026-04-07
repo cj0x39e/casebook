@@ -62,6 +62,9 @@ export function App() {
     settingsPanelRef,
     summaryMorePopoverRef,
     statusConfig,
+    priorityConfig,
+    priorityLabel,
+    priorityColor,
   } = useApp()
 
   const selectedCaseRenderedHtml = useMemo(() => {
@@ -199,11 +202,21 @@ export function App() {
                    </div>
                    <div className="detail-header__meta-row">
                      <span className="detail-header__priority">
-                       <span className="detail-header__priority-text">{selectedCase.priority ?? 'P0'}</span>
+                       <span className="detail-header__priority-text">{selectedCase.priority ? priorityLabel(selectedCase.priority) : priorityConfig[0]?.id ?? 'P0'}</span>
                        <span className="detail-header__priority-dots">
-                         {Array.from({ length: Math.max(0, 3 - parseInt((selectedCase.priority ?? 'P0').replace(/\D/g, '') || '0', 10)) }, (_, i) => (
-                           <span key={i} className="detail-header__priority-dot" />
-                         ))}
+                         {(() => {
+                           const total = priorityConfig.length
+                           const currentIndex = priorityConfig.findIndex(p => p.id === selectedCase.priority)
+                           const litCount = currentIndex >= 0 ? total - currentIndex : 0
+                           const color = selectedCase.priority ? priorityColor(selectedCase.priority) : undefined
+                           return Array.from({ length: total }, (_, i) => (
+                             <span
+                               key={i}
+                               className={`detail-header__priority-dot${i < litCount ? ' detail-header__priority-dot--lit' : ''}`}
+                               style={i < litCount ? { background: color } : undefined}
+                             />
+                           ))
+                         })()}
                        </span>
                      </span>
                      <span className="detail-header__meta">

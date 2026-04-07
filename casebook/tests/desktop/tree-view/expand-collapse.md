@@ -2,7 +2,7 @@
 title: Tree view expand and collapse works correctly
 platform: desktop
 status: pass
-priority: medium
+priority: P2
 ---
 
 ## Preconditions

@@ -15,3 +15,24 @@ statuses:
       en: Blocked
       zh-CN: 已阻塞
     color: '#FF0000'
+priorities:
+  - id: P0
+    label:
+      en: Critical
+      zh-CN: 紧急
+    color: '#FF0000'
+  - id: P1
+    label:
+      en: High
+      zh-CN: 高
+    color: '#FF8C00'
+  - id: P2
+    label:
+      en: Medium
+      zh-CN: 中
+    color: '#FFD400'
+  - id: P3
+    label:
+      en: Low
+      zh-CN: 低
+    color: '#2FDA00'

@@ -1182,6 +1182,10 @@ code {
   background: #c4c4c4;
 }
 
+.detail-header__priority-dot--lit {
+  background: #111111;
+}
+
 .detail-header__meta {
   color: #aaa7a7;
   font-size: 0.9rem;

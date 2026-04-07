@@ -1,8 +1,8 @@
 ---
 title: Sidebar stats panel displays correctly
 platform: desktop
-status: todo
-priority: high
+status: pass
+priority: P1
 ---
 
 ## Preconditions

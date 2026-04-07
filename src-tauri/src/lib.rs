@@ -25,6 +25,27 @@ statuses:
       en: Blocked
       zh-CN: 已阻塞
     color: '#FF0000'
+priorities:
+  - id: P0
+    label:
+      en: Critical
+      zh-CN: 紧急
+    color: '#FF0000'
+  - id: P1
+    label:
+      en: High
+      zh-CN: 高
+    color: '#FF8C00'
+  - id: P2
+    label:
+      en: Medium
+      zh-CN: 中
+    color: '#FFD400'
+  - id: P3
+    label:
+      en: Low
+      zh-CN: 低
+    color: '#2FDA00'
 "#;
 const DEFAULT_AGENTS_CONTENT: &str = r#"# Casebook 规范
 
@@ -38,6 +59,7 @@ const DEFAULT_AGENTS_CONTENT: &str = r#"# Casebook 规范
 - 必填字段：`title`、`platform`
 - 可选字段：`priority`、`status`
 - `status` 合法值在 `casebook/config.yml` 中配置
+- `priority` 合法值在 `casebook/config.yml` 中配置
 
 ## 正文结构
 
@@ -100,6 +122,7 @@ struct ScanResult {
     tests_root: Option<String>,
     tests_alias: Option<String>,
     statuses: Vec<StatusConfig>,
+    priorities: Vec<StatusConfig>,
     cases: Vec<ScannedCase>,
     errors: Vec<ScanError>,
 }
@@ -108,6 +131,7 @@ struct ScanResult {
 struct CasebookConfig {
     tests_alias: Option<String>,
     statuses: Option<Vec<StatusConfig>>,
+    priorities: Option<Vec<StatusConfig>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -167,7 +191,7 @@ fn scan_casebook(project_root: String) -> AppResult<ScanResult> {
     ensure_casebook_skeleton(&project_root_path)?;
 
     let tests_root = casebook_root.join("tests");
-    let (tests_alias, statuses) = read_config(&casebook_root)?;
+    let (tests_alias, statuses, priorities) = read_config(&casebook_root)?;
 
     let mut result = ScanResult {
         project_root,
@@ -175,6 +199,7 @@ fn scan_casebook(project_root: String) -> AppResult<ScanResult> {
         tests_root: None,
         tests_alias,
         statuses,
+        priorities,
         cases: Vec::new(),
         errors: Vec::new(),
     };
@@ -239,7 +264,7 @@ fn update_case_status(
     let casebook_root = project_root_path.join("casebook");
 
     // 读取配置获取允许的状态列表
-    let (_, statuses) = read_config(&casebook_root)
+    let (_, statuses, _) = read_config(&casebook_root)
         .map_err(|_| app_error("config.read_failed"))?;
     let allowed_statuses: Vec<String> = statuses.iter().map(|s| s.id.clone()).collect();
 
@@ -441,7 +466,7 @@ fn ensure_file_with_content(path: &Path, content: &str, _label: &str) -> AppResu
         .map_err(|error| app_error_with_detail("bootstrap.create_file_failed", error.to_string()))
 }
 
-fn read_config(casebook_root: &Path) -> Result<(Option<String>, Vec<StatusConfig>), ScanError> {
+fn read_config(casebook_root: &Path) -> Result<(Option<String>, Vec<StatusConfig>, Vec<StatusConfig>), ScanError> {
     let config_path = casebook_root.join("config.yml");
     if !config_path.exists() {
         return Err(scan_error(
@@ -492,7 +517,9 @@ fn read_config(casebook_root: &Path) -> Result<(Option<String>, Vec<StatusConfig
         }
     }).or(Some(DEFAULT_TESTS_ALIAS.to_string()));
 
-    Ok((tests_alias, statuses))
+    let priorities = config.priorities.unwrap_or_default();
+
+    Ok((tests_alias, statuses, priorities))
 }
 
 fn normalize_case_status(status: &str, allowed_statuses: &[String]) -> Option<String> {
