@@ -41,6 +41,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Verify tag matches app version
+        shell: bash
         run: |
           node <<'EOF'
           const fs = require('fs')
