@@ -19,4 +19,5 @@ export interface CaseFileNode {
   depth: number
   caseId: string
   status: CaseWorkflowStatus
+  priority: string | null
 }

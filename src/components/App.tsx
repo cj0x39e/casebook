@@ -28,8 +28,11 @@ export function App() {
     scanError,
     parsedCases,
     visibleTreeChildren,
-    activeTreeStatusFilter,
-    setActiveTreeStatusFilter,
+    activeTreeStatusFilters,
+    activeTreePriorityFilter,
+    toggleTreeStatusFilter,
+    resetTreeStatusFilter,
+    setActiveTreePriorityFilter,
     selectedCaseId,
     expandedDirectories,
     toggleDirectory,
@@ -106,6 +109,19 @@ export function App() {
     }
   }, [parsedCases, statusConfig])
 
+  const prioritySummary = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const config of priorityConfig) {
+      counts[config.id] = 0
+    }
+    for (const testCase of parsedCases) {
+      if (testCase.priority && counts[testCase.priority] !== undefined) {
+        counts[testCase.priority] += 1
+      }
+    }
+    return { counts }
+  }, [parsedCases, priorityConfig])
+
   // 获取状态颜色
   const getStatusColor = (statusId: string): string | undefined => {
     return statusConfig.find(s => s.id === statusId)?.color
@@ -149,37 +165,50 @@ export function App() {
             <main className="workspace workspace--dashboard">
              <div className="sidebar__top">
                <div className="sidebar__stats">
-                 {statusConfig.map((config) => (
-                   <button
-                     key={config.id}
-                     className="sidebar__stat"
-                     type="button"
-                     data-status={config.id}
-                     data-active={activeTreeStatusFilter === config.id}
-                     onClick={() => setActiveTreeStatusFilter(config.id)}
-                   >
-                     <span className="sidebar__stat-count">{statusSummary.counts[config.id] ?? 0}</span>
-                     <span className="sidebar__stat-meta">
-                       <span className="sidebar__stat-swatch" style={{ backgroundColor: config.color }} />
-                       <span className="sidebar__stat-percent">
-                         {statusSummary.percents[config.id] ?? 0}%
-                       </span>
-                     </span>
-                   </button>
-                 ))}
+                  {statusConfig.map((config) => (
+                    <button
+                      key={config.id}
+                      className="sidebar__stat"
+                      type="button"
+                      data-status={config.id}
+                      data-active={activeTreeStatusFilters.includes(config.id)}
+                      onClick={() => toggleTreeStatusFilter(config.id)}
+                    >
+                      <span className="sidebar__stat-count">{statusSummary.counts[config.id] ?? 0}</span>
+                      <span className="sidebar__stat-meta">
+                        <span className="sidebar__stat-swatch" style={{ backgroundColor: config.color }} />
+                        <span className="sidebar__stat-percent">
+                          {statusSummary.percents[config.id] ?? 0}%
+                        </span>
+                      </span>
+                    </button>
+                  ))}
 
-                 <button
-                   className="sidebar__filter-button"
-                   type="button"
-                   data-active={activeTreeStatusFilter === 'all'}
-                   onClick={() => setActiveTreeStatusFilter('all')}
-                 >
-                   ALL
-                 </button>
+                  <button
+                    className="sidebar__filter-button"
+                    type="button"
+                    data-active={activeTreeStatusFilters.length === 0}
+                    onClick={() => resetTreeStatusFilter()}
+                  >
+                    ALL
+                  </button>
+                </div>
+               <div className="sidebar__priorities">
+                  {priorityConfig.map((config) => (
+                    <button
+                      key={config.id}
+                      className="sidebar__priority-dot-filter"
+                      type="button"
+                      title={`${priorityLabel(config.id)} (${prioritySummary.counts[config.id] ?? 0})`}
+                      data-active={activeTreePriorityFilter === config.id}
+                      onClick={() => setActiveTreePriorityFilter(activeTreePriorityFilter === config.id ? 'all' : config.id)}
+                      style={{ backgroundColor: activeTreePriorityFilter === config.id ? config.color : undefined, borderColor: config.color }}
+                    />
+                  ))}
+                </div>
                </div>
-             </div>
 
-             <div className="detail-header">
+               <div className="detail-header">
                {selectedCase && (
                  <>
                    <div className="detail-header__title-row">
@@ -263,7 +292,7 @@ export function App() {
                    ) : (
                      <div className="placeholder">
                        <p>
-                         {activeTreeStatusFilter === 'all'
+                         {activeTreeStatusFilters.length === 0 && activeTreePriorityFilter === 'all'
                            ? t('tree.noCases')
                            : t('tree.noCasesForFilter')}
                        </p>

@@ -539,15 +539,9 @@ code {
   transition: border-color 160ms ease, background-color 160ms ease;
 }
 
-.sidebar__stat[data-active='true']::before {
-  content: '▲';
-  position: absolute;
-  bottom: -16px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 10px;
-  line-height: 1;
-  color: #111111;
+.sidebar__stat[data-active='true'] {
+  border-color: #111111;
+  border-width: 2px;
 }
 
 .sidebar__stat-count {
@@ -606,15 +600,37 @@ code {
   outline: none;
 }
 
-.sidebar__filter-button[data-active='true']::before {
-  content: '▲';
-  position: absolute;
-  bottom: -16px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 10px;
-  line-height: 1;
+.sidebar__filter-button[data-active='true'] {
+  border-color: #111111;
+  border-width: 2px;
   color: #111111;
+}
+
+.sidebar__priorities {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.sidebar__priority-dot-filter {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid #c4c4c4;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.sidebar__priority-dot-filter:hover {
+  transform: scale(1.3);
+}
+
+.sidebar__priority-dot-filter[data-active='true'] {
+  transform: scale(1.3);
 }
 
 .tree-panel.tree-panel--card {
