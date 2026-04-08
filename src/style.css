@@ -559,8 +559,8 @@ code {
 .workspace__resizer:hover::before,
 .workspace__resizer:focus-visible::before,
 .shell[data-resizing-sidebar='true'] .workspace__resizer::before {
-  width: 2px;
-  background: rgba(47, 107, 255, 0.8);
+  width: 1px;
+  background: rgba(17, 17, 17, 0.28);
 }
 
 .workspace__resizer:hover,
