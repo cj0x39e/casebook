@@ -1,7 +1,19 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react'
 import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
 import { useApp } from '../contexts/AppContext'
+import {
+  defaultSidebarWidth,
+  maxSidebarWidth,
+  minDetailWidth,
+  minSidebarWidth,
+  sidebarDividerWidth,
+} from '../contexts/AppContext'
 import { CaseTreeNode } from './CaseTreeNode'
 import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
@@ -58,6 +70,9 @@ export function App() {
     localeOptions,
     sourceLabel,
     translateParseNote,
+    sidebarWidth,
+    sidebarViewportWidth,
+    setSidebarWidth,
     parseNotesTooltipStyle,
     settingsPanelStyle,
     summaryMorePopoverStyle,
@@ -70,6 +85,8 @@ export function App() {
     priorityColor,
   } = useApp()
 
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+  const sidebarResizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const selectedCaseRenderedHtml = useMemo(() => {
     if (!selectedCase) return ''
     return DOMPurify.sanitize(markdownRenderer.render(selectedCase.renderBody))
@@ -127,8 +144,114 @@ export function App() {
     return statusConfig.find(s => s.id === statusId)?.color
   }
 
+  const clampSidebarWidth = (value: number, viewportWidth = window.innerWidth) => {
+    const availableWidth = Math.max(0, viewportWidth - minDetailWidth - sidebarDividerWidth)
+    const upperBound = Math.max(0, Math.min(maxSidebarWidth, availableWidth))
+    const lowerBound = Math.min(minSidebarWidth, upperBound)
+    if (Number.isNaN(value)) {
+      return defaultSidebarWidth
+    }
+    return Math.max(lowerBound, Math.min(value, upperBound))
+  }
+
+  const beginSidebarResize = (clientX: number) => {
+    sidebarResizeStartRef.current = {
+      startX: clientX,
+      startWidth: sidebarWidth,
+    }
+    setIsResizingSidebar(true)
+  }
+
+  const updateSidebarWidth = (clientX: number) => {
+    const start = sidebarResizeStartRef.current
+    if (!start) return
+    setSidebarWidth(clampSidebarWidth(start.startWidth + (clientX - start.startX)))
+  }
+
+  const endSidebarResize = () => {
+    sidebarResizeStartRef.current = null
+    setIsResizingSidebar(false)
+  }
+
+  useEffect(() => {
+    if (!isResizingSidebar) return
+
+    const handlePointerMove = (event: PointerEvent) => {
+      updateSidebarWidth(event.clientX)
+    }
+
+    const handlePointerUp = () => {
+      endSidebarResize()
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+
+    const previousUserSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+      document.body.style.userSelect = previousUserSelect
+      document.body.style.cursor = previousCursor
+    }
+  }, [isResizingSidebar])
+
+  const handleSidebarResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    beginSidebarResize(event.clientX)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handleSidebarResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 32 : 16
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      setSidebarWidth(clampSidebarWidth(sidebarWidth - step))
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      setSidebarWidth(clampSidebarWidth(sidebarWidth + step))
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setSidebarWidth(clampSidebarWidth(minSidebarWidth))
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setSidebarWidth(clampSidebarWidth(maxSidebarWidth))
+    }
+  }
+
+  const effectiveSidebarWidth = clampSidebarWidth(sidebarWidth, sidebarViewportWidth)
+
+  const handleSidebarResizePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture may already be gone after a cancel or window blur.
+    }
+    endSidebarResize()
+  }
+
+  const handleSidebarResizePointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture may already be gone after a cancel or window blur.
+    }
+    endSidebarResize()
+  }
+
   return (
-    <div className="shell" data-screen={isHomeView ? 'home' : 'inner'}>
+    <div
+      className="shell"
+      data-screen={isHomeView ? 'home' : 'inner'}
+      data-resizing-sidebar={isResizingSidebar}
+    >
       <div className="titlebar-drag-region" data-tauri-drag-region />
       {isHomeView ? (
         <main className="home">
@@ -162,9 +285,9 @@ export function App() {
           {warningSummary && <p className="inline-banner">{warningSummary}</p>}
 
           {viewState === 'ready' ? (
-            <main className="workspace workspace--dashboard">
-             <div className="sidebar__top">
-               <div className="sidebar__stats">
+            <main className="workspace workspace--dashboard" style={{ '--sidebar-width': `${effectiveSidebarWidth}px` } as CSSProperties}>
+              <div className="sidebar__top">
+                <div className="sidebar__stats">
                   {statusConfig.map((config) => (
                     <button
                       key={config.id}
@@ -193,7 +316,7 @@ export function App() {
                     ALL
                   </button>
                 </div>
-               <div className="sidebar__priorities">
+                <div className="sidebar__priorities">
                   {priorityConfig.map((config) => (
                     <button
                       key={config.id}
@@ -202,182 +325,199 @@ export function App() {
                       title={`${priorityLabel(config.id)} (${prioritySummary.counts[config.id] ?? 0})`}
                       data-active={activeTreePriorityFilter === config.id}
                       onClick={() => setActiveTreePriorityFilter(activeTreePriorityFilter === config.id ? 'all' : config.id)}
-                      style={{ backgroundColor: activeTreePriorityFilter === config.id ? config.color : undefined, borderColor: config.color }}
+                      style={{
+                        backgroundColor: activeTreePriorityFilter === config.id ? config.color : undefined,
+                        borderColor: config.color,
+                      }}
                     />
                   ))}
                 </div>
-               </div>
+              </div>
 
-               <div className="detail-header">
-               {selectedCase && (
-                 <>
-                   <div className="detail-header__title-row">
-                     <span
-                       className="detail-header__status"
-                       style={{ backgroundColor: getStatusColor(selectedCase.status) }}
-                     />
-                     <h2>{selectedCase.title}</h2>
-                     {hasParseNotes && (
-                       <button
-                         ref={parseNotesTriggerRef}
-                         className="parse-notes-trigger"
-                         type="button"
-                         aria-expanded={showParseNotes}
-                         onClick={() => setShowParseNotes(!showParseNotes)}
-                       >
-                         <span className="parse-notes-trigger__icon">!</span>
-                       </button>
-                     )}
-                   </div>
-                   <div className="detail-header__meta-row">
-                     <span className="detail-header__priority">
-                       <span className="detail-header__priority-text">{selectedCase.priority ? priorityLabel(selectedCase.priority) : priorityConfig[0]?.id ?? 'P0'}</span>
-                       <span className="detail-header__priority-dots">
-                         {(() => {
-                           const total = priorityConfig.length
-                           const currentIndex = priorityConfig.findIndex(p => p.id === selectedCase.priority)
-                           const litCount = currentIndex >= 0 ? total - currentIndex : 0
-                           const color = selectedCase.priority ? priorityColor(selectedCase.priority) : undefined
-                           return Array.from({ length: total }, (_, i) => (
-                             <span
-                               key={i}
-                               className={`detail-header__priority-dot${i < litCount ? ' detail-header__priority-dot--lit' : ''}`}
-                               style={i < litCount ? { background: color } : undefined}
-                             />
-                           ))
-                         })()}
-                       </span>
-                     </span>
-                     <span className="detail-header__meta">
-                       {t('detail.updated')}: {selectedCase.updatedAtLabel}
-                     </span>
-                     <span className="detail-header__meta">
-                       {t('detail.created')}: {selectedCase.createdAtLabel}
-                     </span>
-                     <button
-                       ref={summaryMoreTriggerRef}
-                       className="detail-header__more"
-                       type="button"
-                       aria-label={t('detail.moreAriaLabel')}
-                       aria-expanded={showSummaryMeta}
-                       onClick={() => setShowSummaryMeta(!showSummaryMeta)}
-                     >
-                       <span />
-                       <span />
-                       <span />
-                     </button>
-                   </div>
-                 </>
-               )}
-             </div>
+              <div
+                className="workspace__resizer"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t('layout.resizeSidebar')}
+                aria-valuemin={minSidebarWidth}
+                aria-valuemax={maxSidebarWidth}
+                aria-valuenow={Math.round(effectiveSidebarWidth)}
+                tabIndex={0}
+                onPointerDown={handleSidebarResizePointerDown}
+                onKeyDown={handleSidebarResizeKeyDown}
+                onPointerUp={handleSidebarResizePointerUp}
+                onPointerCancel={handleSidebarResizePointerCancel}
+              />
 
-             <aside className="sidebar__body">
-               <div className="tree-panel tree-panel--card">
-                 <div className="tree-panel__body">
-                   {visibleTreeChildren.length > 0 ? (
-                     <ul className="case-tree" role="tree">
-                       {visibleTreeChildren.map((node, index) => (
-                         <CaseTreeNode
-                           key={node.id}
-                           node={node}
-                           level={0}
-                           isLastChild={index === visibleTreeChildren.length - 1}
-                           selectedCaseId={selectedCaseId}
-                           expandedDirectories={expandedDirectories}
-                           onToggle={toggleDirectory}
-                           onSelect={selectCase}
-                         />
-                       ))}
-                     </ul>
-                   ) : (
-                     <div className="placeholder">
-                       <p>
-                         {activeTreeStatusFilters.length === 0 && activeTreePriorityFilter === 'all'
-                           ? t('tree.noCases')
-                           : t('tree.noCasesForFilter')}
-                       </p>
-                     </div>
-                   )}
-                 </div>
-               </div>
-
-               </aside>
-
-               <section className="detail-panel detail-panel--dashboard">
-                 {selectedCase ? (
-                   <>
-                     <div className="detail-view-switch">
+              <div className="detail-header">
+                {selectedCase && (
+                  <>
+                    <div className="detail-header__title-row">
+                      <span
+                        className="detail-header__status"
+                        style={{ backgroundColor: getStatusColor(selectedCase.status) }}
+                      />
+                      <h2>{selectedCase.title}</h2>
+                      {hasParseNotes && (
                         <button
-                          className="detail-view-switch__button"
+                          ref={parseNotesTriggerRef}
+                          className="parse-notes-trigger"
                           type="button"
-                          data-active={detailContentView === 'rendered'}
-                          onClick={() => setDetailContentView('rendered')}
+                          aria-expanded={showParseNotes}
+                          onClick={() => setShowParseNotes(!showParseNotes)}
                         >
-                          {t('detail.renderedView')}
+                          <span className="parse-notes-trigger__icon">!</span>
                         </button>
-                        <button
-                          className="detail-view-switch__button"
-                          type="button"
-                          data-active={detailContentView === 'raw'}
-                          onClick={() => setDetailContentView('raw')}
-                        >
-                          {t('detail.rawView')}
-                        </button>
-                      </div>
+                      )}
+                    </div>
+                    <div className="detail-header__meta-row">
+                      <span className="detail-header__priority">
+                        <span className="detail-header__priority-text">{selectedCase.priority ? priorityLabel(selectedCase.priority) : priorityConfig[0]?.id ?? 'P0'}</span>
+                        <span className="detail-header__priority-dots">
+                          {(() => {
+                            const total = priorityConfig.length
+                            const currentIndex = priorityConfig.findIndex(p => p.id === selectedCase.priority)
+                            const litCount = currentIndex >= 0 ? total - currentIndex : 0
+                            const color = selectedCase.priority ? priorityColor(selectedCase.priority) : undefined
+                            return Array.from({ length: total }, (_, i) => (
+                              <span
+                                key={i}
+                                className={`detail-header__priority-dot${i < litCount ? ' detail-header__priority-dot--lit' : ''}`}
+                                style={i < litCount ? { background: color } : undefined}
+                              />
+                            ))
+                          })()}
+                        </span>
+                      </span>
+                      <span className="detail-header__meta">
+                        {t('detail.updated')}: {selectedCase.updatedAtLabel}
+                      </span>
+                      <span className="detail-header__meta">
+                        {t('detail.created')}: {selectedCase.createdAtLabel}
+                      </span>
+                      <button
+                        ref={summaryMoreTriggerRef}
+                        className="detail-header__more"
+                        type="button"
+                        aria-label={t('detail.moreAriaLabel')}
+                        aria-expanded={showSummaryMeta}
+                        onClick={() => setShowSummaryMeta(!showSummaryMeta)}
+                      >
+                        <span />
+                        <span />
+                        <span />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
-                      <section className="detail-document">
-                        {detailContentView === 'rendered' ? (
-                          <div
-                            className="markdown-content"
-                            dangerouslySetInnerHTML={{ __html: selectedCaseRenderedHtml }}
+              <aside className="sidebar__body">
+                <div className="tree-panel tree-panel--card">
+                  <div className="tree-panel__body">
+                    {visibleTreeChildren.length > 0 ? (
+                      <ul className="case-tree" role="tree">
+                        {visibleTreeChildren.map((node, index) => (
+                          <CaseTreeNode
+                            key={node.id}
+                            node={node}
+                            level={0}
+                            isLastChild={index === visibleTreeChildren.length - 1}
+                            selectedCaseId={selectedCaseId}
+                            expandedDirectories={expandedDirectories}
+                            onToggle={toggleDirectory}
+                            onSelect={selectCase}
                           />
-                        ) : (
-                          <pre className="raw-markdown__content raw-markdown__content--panel">
-                            {selectedCase.content}
-                          </pre>
-                        )}
-                      </section>
-                   </>
-                 ) : (
-                   <div className="placeholder">
-                     <p>{t('detail.selectCase')}</p>
-                   </div>
-                 )}
-               </section>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="placeholder">
+                        <p>
+                          {activeTreeStatusFilters.length === 0 && activeTreePriorityFilter === 'all'
+                            ? t('tree.noCases')
+                            : t('tree.noCasesForFilter')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </aside>
 
-               <div className="sidebar__footer">
-                 <button
-                   ref={settingsButtonRef}
-                   className="sidebar__settings-button"
-                   type="button"
-                   aria-expanded={showSettingsPanel}
-                   onClick={() => setShowSettingsPanel(!showSettingsPanel)}
-                 >
-                   <img src={settingIcon} alt="" className="sidebar__settings-icon" />
-                 </button>
-                 <span className="sidebar__version">
-                   {t('brand.casebook')} {appVersion}
-                 </span>
-               </div>
+              <section className="detail-panel detail-panel--dashboard">
+                {selectedCase ? (
+                  <>
+                    <div className="detail-view-switch">
+                      <button
+                        className="detail-view-switch__button"
+                        type="button"
+                        data-active={detailContentView === 'rendered'}
+                        onClick={() => setDetailContentView('rendered')}
+                      >
+                        {t('detail.renderedView')}
+                      </button>
+                      <button
+                        className="detail-view-switch__button"
+                        type="button"
+                        data-active={detailContentView === 'raw'}
+                        onClick={() => setDetailContentView('raw')}
+                      >
+                        {t('detail.rawView')}
+                      </button>
+                    </div>
 
-               <div className="detail-panel__actions">
-                 <div className="status-dots">
-                   {statusConfig.map((config) => (
-                       <button
-                         key={config.id}
-                         className="status-dot"
-                         type="button"
-                         data-status={config.id}
-                         style={{ backgroundColor: config.color }}
-                         data-active={selectedCase ? String(config.id === selectedCase.status) : 'false'}
-                         aria-label={config.label[selectedLocale] || config.label['en'] || config.id}
-                         onClick={() => updateCaseStatus(config.id)}
-                       />
-                     ))}
-                 </div>
-                 {statusUpdateError && <p className="inline-error">{statusUpdateError}</p>}
-               </div>
-               </main>
+                    <section className="detail-document">
+                      {detailContentView === 'rendered' ? (
+                        <div
+                          className="markdown-content"
+                          dangerouslySetInnerHTML={{ __html: selectedCaseRenderedHtml }}
+                        />
+                      ) : (
+                        <pre className="raw-markdown__content raw-markdown__content--panel">
+                          {selectedCase.content}
+                        </pre>
+                      )}
+                    </section>
+                  </>
+                ) : (
+                  <div className="placeholder">
+                    <p>{t('detail.selectCase')}</p>
+                  </div>
+                )}
+              </section>
+
+              <div className="sidebar__footer">
+                <button
+                  ref={settingsButtonRef}
+                  className="sidebar__settings-button"
+                  type="button"
+                  aria-expanded={showSettingsPanel}
+                  onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+                >
+                  <img src={settingIcon} alt="" className="sidebar__settings-icon" />
+                </button>
+                <span className="sidebar__version">
+                  {t('brand.casebook')} {appVersion}
+                </span>
+              </div>
+
+              <div className="detail-panel__actions">
+                <div className="status-dots">
+                  {statusConfig.map((config) => (
+                    <button
+                      key={config.id}
+                      className="status-dot"
+                      type="button"
+                      data-status={config.id}
+                      style={{ backgroundColor: config.color }}
+                      data-active={selectedCase ? String(config.id === selectedCase.status) : 'false'}
+                      aria-label={config.label[selectedLocale] || config.label['en'] || config.id}
+                      onClick={() => updateCaseStatus(config.id)}
+                    />
+                  ))}
+                </div>
+                {statusUpdateError && <p className="inline-error">{statusUpdateError}</p>}
+              </div>
+            </main>
           ) : (
             <main className="inner-state">
               <div className="inner-state__body">

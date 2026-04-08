@@ -41,6 +41,9 @@ export const messages = {
       source: 'Source',
       path: 'Path',
     },
+    layout: {
+      resizeSidebar: 'Resize sidebar',
+    },
     settings: {
       project: 'Project',
       changeDirectory: 'Change Directory',
@@ -159,6 +162,9 @@ export const messages = {
       updated: 'update by',
       source: '来源',
       path: '路径',
+    },
+    layout: {
+      resizeSidebar: '调整侧边栏宽度',
     },
     settings: {
       project: '项目',

@@ -476,8 +476,11 @@ code {
 
 .workspace {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  --sidebar-width: 280px;
+  --sidebar-divider-width: 16px;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   gap: 0;
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -494,7 +497,6 @@ code {
   padding: 32px 16px 8px;
   background: #f3f3f3;
   border-bottom: 1px solid #e5e5e5;
-  border-right: 1px solid #e5e5e5;
   min-width: 0;
 }
 
@@ -510,9 +512,65 @@ code {
   display: flex;
   flex-direction: column;
   background: #f3f3f3;
-  border-right: 1px solid #e5e5e5;
   min-height: 0;
   min-width: 0;
+}
+
+.workspace__resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--sidebar-width);
+  width: var(--sidebar-divider-width);
+  transform: translateX(calc(var(--sidebar-divider-width) / -2));
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+}
+
+.workspace__resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.16);
+  opacity: 1;
+  transition:
+    opacity 160ms ease,
+    background-color 160ms ease,
+    width 160ms ease;
+}
+
+.workspace__resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  right: -6px;
+}
+
+.workspace__resizer:hover::before,
+.workspace__resizer:focus-visible::before,
+.shell[data-resizing-sidebar='true'] .workspace__resizer::before {
+  width: 2px;
+  background: rgba(47, 107, 255, 0.8);
+}
+
+.workspace__resizer:hover,
+.workspace__resizer:focus-visible,
+.shell[data-resizing-sidebar='true'] .workspace__resizer {
+  background: transparent;
+}
+
+.workspace__resizer:focus-visible {
+  outline: none;
 }
 
 .sidebar__stats {
@@ -652,7 +710,6 @@ code {
   position: relative;
   height: 48px;
   border-top: 1px solid #e5e5e5;
-  border-right: 1px solid #e5e5e5;
   background: #f3f3f3;
   display: flex;
   align-items: center;
@@ -1455,6 +1512,25 @@ code {
   border-top: 1px solid #e5e5e5;
   background: transparent;
   min-width: 0;
+}
+
+@media (max-width: 880px) {
+  .workspace {
+    --sidebar-divider-width: 16px;
+  }
+
+  .sidebar__top,
+  .sidebar__body,
+  .sidebar__footer {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .detail-header,
+  .detail-panel--dashboard {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
 }
 
 .status-dots {

@@ -29,6 +29,32 @@ type ViewState = 'idle' | 'loading' | 'ready' | 'invalid-project' | 'error'
 type DetailContentView = 'rendered' | 'raw'
 
 const ROOT_TREE_PATH = '__tests_root__'
+export const sidebarWidthStorageKey = 'casebook.sidebarWidth'
+export const defaultSidebarWidth = 280
+export const minSidebarWidth = 220
+export const maxSidebarWidth = 560
+export const minDetailWidth = 360
+export const sidebarDividerWidth = 16
+
+function clampSidebarWidth(value: number, viewportWidth = Number.POSITIVE_INFINITY) {
+  const availableWidth = Math.max(0, viewportWidth - minDetailWidth - sidebarDividerWidth)
+  const upperBound = Math.max(0, Math.min(maxSidebarWidth, availableWidth))
+  const lowerBound = Math.min(minSidebarWidth, upperBound)
+  if (Number.isNaN(value)) {
+    return defaultSidebarWidth
+  }
+  return Math.max(lowerBound, Math.min(value, upperBound))
+}
+
+function loadSidebarWidth() {
+  if (typeof window === 'undefined') {
+    return defaultSidebarWidth
+  }
+
+  const storedValue = window.localStorage.getItem(sidebarWidthStorageKey)
+  const parsedValue = storedValue ? Number.parseInt(storedValue, 10) : Number.NaN
+  return clampSidebarWidth(parsedValue)
+}
 
 interface AppContextValue {
   // State
@@ -47,6 +73,8 @@ interface AppContextValue {
   showSettingsPanel: boolean
   showSummaryMeta: boolean
   showTreeFilterPanel: boolean
+  sidebarWidth: number
+  sidebarViewportWidth: number
 
   // Refs
   treeFilterButtonRef: React.RefObject<HTMLButtonElement>
@@ -105,6 +133,7 @@ interface AppContextValue {
   setShowSummaryMeta: (value: boolean) => void
   setShowTreeFilterPanel: (value: boolean) => void
   setDetailContentView: (value: DetailContentView) => void
+  setSidebarWidth: (value: number) => void
   toggleTreeStatusFilter: (status: CaseWorkflowStatus) => void
   resetTreeStatusFilter: () => void
   setActiveTreePriorityFilter: (value: string | 'all') => void
@@ -132,6 +161,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [showSummaryMeta, setShowSummaryMeta] = useState(false)
   const [showTreeFilterPanel, setShowTreeFilterPanel] = useState(false)
+  const [sidebarWidth, setSidebarWidthState] = useState<number>(() => loadSidebarWidth())
+  const [sidebarViewportWidth, setSidebarViewportWidth] = useState<number>(() =>
+    typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth
+  )
 
   // Refs
   const treeFilterButtonRef = useRef<HTMLButtonElement>(null)
@@ -275,7 +308,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [showSummaryMeta])
 
   useEffect(() => {
-    const handleResize = () => handleViewportChange()
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(sidebarWidthStorageKey, String(Math.round(sidebarWidth)))
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    const handleResize = () => {
+      setSidebarViewportWidth(window.innerWidth)
+      handleViewportChange()
+    }
     const handleScroll = () => handleViewportChange()
 
     window.addEventListener('resize', handleResize)
@@ -515,6 +556,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAppLocale(value)
   }, [])
 
+  const handleSetSidebarWidth = useCallback((value: number) => {
+    setSidebarWidthState(clampSidebarWidth(value))
+  }, [])
+
   const value: AppContextValue = {
     // State
     selectedProject,
@@ -532,6 +577,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showSettingsPanel,
     showSummaryMeta,
     showTreeFilterPanel,
+    sidebarWidth,
+    sidebarViewportWidth,
 
     // Refs
     treeFilterButtonRef,
@@ -590,6 +637,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setShowSummaryMeta,
     setShowTreeFilterPanel,
     setDetailContentView,
+    setSidebarWidth: handleSetSidebarWidth,
     toggleTreeStatusFilter,
     resetTreeStatusFilter,
     setActiveTreePriorityFilter,
