@@ -87,10 +87,10 @@ export function CaseTreeNode({
             onClick={() => handleCaseSelect(node as CaseFileNode)}
           >
             <span className="tree-view__arrow tree-view__arrow--spacer" aria-hidden="true" />
-            <span className="tree-view__icon" aria-hidden="true">
-              <img src={fileIcon} alt="" />
-            </span>
             <span className="tree-view__label">{node.name}</span>
+            {(node as CaseFileNode).priority && (
+              <span className="tree-view__priority-tag">{(node as CaseFileNode).priority}</span>
+            )}
             <span className="tree-view__sr">{statusLabel((node as CaseFileNode).status)}</span>
           </button>
         )}

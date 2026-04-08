@@ -41,10 +41,10 @@ export function App() {
     parsedCases,
     visibleTreeChildren,
     activeTreeStatusFilters,
-    activeTreePriorityFilter,
+    activeTreePriorityFilters,
     toggleTreeStatusFilter,
     resetTreeStatusFilter,
-    setActiveTreePriorityFilter,
+    toggleTreePriorityFilter,
     selectedCaseId,
     expandedDirectories,
     toggleDirectory,
@@ -317,20 +317,25 @@ export function App() {
                   </button>
                 </div>
                 <div className="sidebar__priorities">
-                  {priorityConfig.map((config) => (
-                    <button
-                      key={config.id}
-                      className="sidebar__priority-dot-filter"
-                      type="button"
-                      title={`${priorityLabel(config.id)} (${prioritySummary.counts[config.id] ?? 0})`}
-                      data-active={activeTreePriorityFilter === config.id}
-                      onClick={() => setActiveTreePriorityFilter(activeTreePriorityFilter === config.id ? 'all' : config.id)}
-                      style={{
-                        backgroundColor: activeTreePriorityFilter === config.id ? config.color : undefined,
-                        borderColor: config.color,
-                      }}
-                    />
-                  ))}
+                  {priorityConfig.map((config) => {
+                    const isActive = activeTreePriorityFilters.includes(config.id)
+                    return (
+                      <button
+                        key={config.id}
+                        className="sidebar__priority-dot-filter"
+                        type="button"
+                        title={`${priorityLabel(config.id)} (${prioritySummary.counts[config.id] ?? 0})`}
+                        data-active={isActive}
+                        onClick={() => toggleTreePriorityFilter(config.id)}
+                        style={{
+                          ['--priority-color' as string]: config.color,
+                        }}
+                      >
+                        <span className="sidebar__priority-dot-count">{prioritySummary.counts[config.id] ?? 0}</span>
+                        <span className="sidebar__priority-dot-label">{config.id}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -433,7 +438,7 @@ export function App() {
                     ) : (
                       <div className="placeholder">
                         <p>
-                          {activeTreeStatusFilters.length === 0 && activeTreePriorityFilter === 'all'
+                          {activeTreeStatusFilters.length === 0 && activeTreePriorityFilters.length === 0
                             ? t('tree.noCases')
                             : t('tree.noCasesForFilter')}
                         </p>

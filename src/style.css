@@ -498,6 +498,9 @@ code {
   background: #f3f3f3;
   border-bottom: 1px solid #e5e5e5;
   min-width: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
 }
 
 .detail-header {
@@ -599,7 +602,6 @@ code {
 
 .sidebar__stat[data-active='true'] {
   border-color: #111111;
-  border-width: 2px;
 }
 
 .sidebar__stat-count {
@@ -660,35 +662,51 @@ code {
 
 .sidebar__filter-button[data-active='true'] {
   border-color: #111111;
-  border-width: 2px;
   color: #111111;
 }
 
 .sidebar__priorities {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 4px;
 }
 
 .sidebar__priority-dot-filter {
   appearance: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  border: 2px solid #c4c4c4;
-  background: transparent;
-  padding: 0;
+  min-width: 28px;
+  border: 1px solid #e5e5e5;
+  background: #ffffff;
+  padding: 3px 6px;
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  color: #333;
+}
+
+.sidebar__priority-dot-count {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sidebar__priority-dot-label {
+  font-size: 7px;
+  font-weight: 500;
+  line-height: 1;
+  text-transform: uppercase;
+  color: #999;
+  vertical-align: sub;
+  margin-left: 1px;
 }
 
 .sidebar__priority-dot-filter:hover {
-  transform: scale(1.3);
+  opacity: 0.85;
 }
 
 .sidebar__priority-dot-filter[data-active='true'] {
-  transform: scale(1.3);
+  border-color: #111111;
 }
 
 .tree-panel.tree-panel--card {
@@ -973,8 +991,8 @@ code {
   content: '';
   position: absolute;
   left: 0;
-  top: 4px;
-  bottom: 4px;
+  top: 8px;
+  bottom: 8px;
   width: 3px;
   border-radius: 2px;
   background: transparent;
@@ -982,6 +1000,16 @@ code {
 
 .tree-view__row--case::before {
   background: var(--status-color, transparent);
+}
+
+.tree-view__priority-tag {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 4px;
+  font-size: 8px;
+  color: #b0b0b0;
+  font-weight: 500;
+  text-transform: uppercase;
 }
 
 .tree-view__subtree {
@@ -1026,15 +1054,17 @@ code {
 }
 
 .tree-view__arrow--spacer {
-  visibility: hidden;
+  display: none;
 }
 
 .tree-view__icon {
   width: 12px;
   height: 12px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
 }
 
 .tree-view__icon img {

@@ -67,7 +67,7 @@ interface AppContextValue {
   statusUpdatePending: CaseWorkflowStatus | null
   statusUpdateError: string | null
   activeTreeStatusFilters: CaseWorkflowStatus[]
-  activeTreePriorityFilter: string | 'all'
+  activeTreePriorityFilters: string[]
   detailContentView: DetailContentView
   showParseNotes: boolean
   showSettingsPanel: boolean
@@ -136,7 +136,8 @@ interface AppContextValue {
   setSidebarWidth: (value: number) => void
   toggleTreeStatusFilter: (status: CaseWorkflowStatus) => void
   resetTreeStatusFilter: () => void
-  setActiveTreePriorityFilter: (value: string | 'all') => void
+  toggleTreePriorityFilter: (priorityId: string) => void
+  resetTreePriorityFilter: () => void
   setSelectedLocale: (value: AppLocale) => void
 }
 
@@ -155,7 +156,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [statusUpdatePending, setStatusUpdatePending] = useState<CaseWorkflowStatus | null>(null)
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null)
   const [activeTreeStatusFilters, setActiveTreeStatusFilters] = useState<CaseWorkflowStatus[]>([])
-  const [activeTreePriorityFilter, setActiveTreePriorityFilter] = useState<string | 'all'>('all')
+  const [activeTreePriorityFilters, setActiveTreePriorityFilters] = useState<string[]>([])
   const [detailContentView, setDetailContentView] = useState<DetailContentView>('rendered')
   const [showParseNotes, setShowParseNotes] = useState(false)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
@@ -255,8 +256,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const visibleTree = useMemo<DirectoryNode | null>(() => {
     if (!caseTree) return null
-    return filterTreeDirectory(caseTree, activeTreeStatusFilters, activeTreePriorityFilter)
-  }, [caseTree, activeTreeStatusFilters, activeTreePriorityFilter])
+    return filterTreeDirectory(caseTree, activeTreeStatusFilters, activeTreePriorityFilters)
+  }, [caseTree, activeTreeStatusFilters, activeTreePriorityFilters])
 
   const visibleTreeChildren = useMemo(() => visibleTree?.children ?? [], [visibleTree])
 
@@ -287,7 +288,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setShowTreeFilterPanel(false)
-  }, [activeTreePriorityFilter])
+  }, [activeTreePriorityFilters])
 
   useEffect(() => {
     if (showParseNotes) {
@@ -552,6 +553,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setActiveTreeStatusFilters([])
   }
 
+  function toggleTreePriorityFilter(priorityId: string) {
+    setActiveTreePriorityFilters(prev =>
+      prev.includes(priorityId) ? prev.filter(p => p !== priorityId) : [...prev, priorityId]
+    )
+  }
+
+  function resetTreePriorityFilter() {
+    setActiveTreePriorityFilters([])
+  }
+
   const handleSetSelectedLocale = useCallback((value: AppLocale) => {
     setAppLocale(value)
   }, [])
@@ -571,7 +582,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     statusUpdatePending,
     statusUpdateError,
     activeTreeStatusFilters,
-    activeTreePriorityFilter,
+    activeTreePriorityFilters,
     detailContentView,
     showParseNotes,
     showSettingsPanel,
@@ -640,7 +651,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSidebarWidth: handleSetSidebarWidth,
     toggleTreeStatusFilter,
     resetTreeStatusFilter,
-    setActiveTreePriorityFilter,
+    toggleTreePriorityFilter,
+    resetTreePriorityFilter,
     setSelectedLocale: handleSetSelectedLocale,
   }
 
@@ -724,22 +736,22 @@ function sortTree(directory: DirectoryNode) {
   }
 }
 
-function filterTreeNode(node: TreeNode, statusFilters: CaseWorkflowStatus[], priorityFilter: string | 'all'): TreeNode | null {
+function filterTreeNode(node: TreeNode, statusFilters: CaseWorkflowStatus[], priorityFilters: string[]): TreeNode | null {
   if (node.kind === 'case') {
     const matchesStatus = statusFilters.length === 0 || statusFilters.includes(node.status)
-    const matchesPriority = priorityFilter === 'all' || node.priority === priorityFilter
+    const matchesPriority = priorityFilters.length === 0 || priorityFilters.includes(node.priority)
     return matchesStatus && matchesPriority ? node : null
   }
-  return filterTreeDirectory(node, statusFilters, priorityFilter)
+  return filterTreeDirectory(node, statusFilters, priorityFilters)
 }
 
 function filterTreeDirectory(
   directory: DirectoryNode,
   statusFilters: CaseWorkflowStatus[],
-  priorityFilter: string | 'all' = 'all'
+  priorityFilters: string[] = []
 ): DirectoryNode | null {
   const children = directory.children
-    .map((child) => filterTreeNode(child, statusFilters, priorityFilter))
+    .map((child) => filterTreeNode(child, statusFilters, priorityFilters))
     .filter((child): child is TreeNode => child !== null)
 
   if (directory.path !== ROOT_TREE_PATH && !children.length) {
