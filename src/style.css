@@ -1234,11 +1234,16 @@ code {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 1.5rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: clamp(1.1rem, 1.1vw + 0.9rem, 1.5rem);
   font-weight: 500;
   line-height: 1.2;
+  max-height: calc(1.2em * 2);
   letter-spacing: -0.02em;
 }
 

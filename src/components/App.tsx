@@ -362,7 +362,7 @@ export function App() {
                         className="detail-header__status"
                         style={{ backgroundColor: getStatusColor(selectedCase.status) }}
                       />
-                      <h2>{selectedCase.title}</h2>
+                      <h2 title={selectedCase.title}>{selectedCase.title}</h2>
                       {hasParseNotes && (
                         <button
                           ref={parseNotesTriggerRef}
