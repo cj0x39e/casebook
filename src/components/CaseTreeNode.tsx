@@ -1,7 +1,6 @@
 import type { CaseWorkflowStatus } from '../lib/casebook'
 import type { CaseFileNode, TreeNode } from '../lib/tree'
 import folderIcon from '../assets/folder.svg'
-import fileIcon from '../assets/file.svg'
 import { useApp } from '../contexts/AppContext'
 
 interface CaseTreeNodeProps {

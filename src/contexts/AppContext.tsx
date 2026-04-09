@@ -739,7 +739,7 @@ function sortTree(directory: DirectoryNode) {
 function filterTreeNode(node: TreeNode, statusFilters: CaseWorkflowStatus[], priorityFilters: string[]): TreeNode | null {
   if (node.kind === 'case') {
     const matchesStatus = statusFilters.length === 0 || statusFilters.includes(node.status)
-    const matchesPriority = priorityFilters.length === 0 || priorityFilters.includes(node.priority)
+    const matchesPriority = priorityFilters.length === 0 || (node.priority !== null && priorityFilters.includes(node.priority))
     return matchesStatus && matchesPriority ? node : null
   }
   return filterTreeDirectory(node, statusFilters, priorityFilters)
