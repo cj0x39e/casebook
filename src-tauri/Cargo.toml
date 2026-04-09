@@ -1,6 +1,6 @@
 [package]
 name = "casebook"
-version = "0.2.3"
+version = "0.2.4"
 description = "A local test case manager for Markdown-native QA assets"
 authors = ["Casebook"]
 license = ""
