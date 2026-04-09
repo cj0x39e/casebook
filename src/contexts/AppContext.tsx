@@ -30,6 +30,7 @@ type DetailContentView = 'rendered' | 'raw'
 
 const ROOT_TREE_PATH = '__tests_root__'
 export const sidebarWidthStorageKey = 'casebook.sidebarWidth'
+export const selectedProjectStorageKey = 'casebook.selectedProject'
 export const defaultSidebarWidth = 280
 export const minSidebarWidth = 220
 export const maxSidebarWidth = 560
@@ -54,6 +55,18 @@ function loadSidebarWidth() {
   const storedValue = window.localStorage.getItem(sidebarWidthStorageKey)
   const parsedValue = storedValue ? Number.parseInt(storedValue, 10) : Number.NaN
   return clampSidebarWidth(parsedValue)
+}
+
+function loadSelectedProject(): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const storedValue = window.localStorage.getItem(selectedProjectStorageKey)
+  if (typeof storedValue === 'string' && storedValue.trim()) {
+    return storedValue.trim()
+  }
+  return null
 }
 
 interface AppContextValue {
@@ -147,10 +160,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const { t, i18n } = useTranslation()
 
   // State
-  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const [selectedProject, setSelectedProject] = useState<string | null>(() => loadSelectedProject())
   const [scanResult, setScanResult] = useState<RawScanResult | null>(null)
   const [scanError, setScanError] = useState<string | null>(null)
-  const [viewState, setViewState] = useState<ViewState>('idle')
+  const [viewState, setViewState] = useState<ViewState>(() => {
+    const initialProject = loadSelectedProject()
+    return initialProject !== null ? 'loading' : 'idle'
+  })
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([])
   const [statusUpdatePending, setStatusUpdatePending] = useState<CaseWorkflowStatus | null>(null)
@@ -314,6 +330,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [sidebarWidth])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (selectedProject !== null) {
+      window.localStorage.setItem(selectedProjectStorageKey, selectedProject)
+    } else {
+      window.localStorage.removeItem(selectedProjectStorageKey)
+    }
+  }, [selectedProject])
+
+  useEffect(() => {
     const handleResize = () => {
       setSidebarViewportWidth(window.innerWidth)
       handleViewportChange()
@@ -364,10 +389,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setViewState(result.testsRoot ? 'ready' : 'invalid-project')
     } catch (error) {
       setScanResult(null)
-      setViewState('error')
-      setScanError(extractErrorMessage(error, 'errors.fallback.scanProject'))
+      const errorMessage = extractErrorMessage(error, 'errors.fallback.scanProject')
+      setScanError(errorMessage)
+
+      // Check if this is a path-not-found type error — clear persisted state and return to home
+      const errorCode =
+        error && typeof error === 'object' && typeof Reflect.get(error, 'code') === 'string'
+          ? (Reflect.get(error, 'code') as string)
+          : null
+      if (errorCode === 'project.not_found' || errorCode === 'project.not_directory') {
+        setSelectedProject(null)
+        setViewState('idle')
+        setScanError(null)
+      } else {
+        setViewState('error')
+      }
     }
   }, [])
+
+  // Auto-scan on initial mount if a project was persisted
+  const didAutoScanRef = useRef(false)
+  useEffect(() => {
+    if (didAutoScanRef.current) return
+    if (selectedProject === null) return
+    didAutoScanRef.current = true
+    scanProject(selectedProject)
+  }, [selectedProject, scanProject])
 
   const selectCase = useCallback((caseId: string) => {
     setSelectedCaseId(caseId)
