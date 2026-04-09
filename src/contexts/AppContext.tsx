@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useTranslation } from 'react-i18next'
 import type {
@@ -415,6 +416,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     didAutoScanRef.current = true
     scanProject(selectedProject)
   }, [selectedProject, scanProject])
+
+  // Watch for file changes and auto-refresh
+  useEffect(() => {
+    if (!selectedProject || viewState !== 'ready') return
+
+    // Start watching
+    invoke('watch_casebook', { projectRoot: selectedProject }).catch(() => {
+      // Watching is best-effort, don't block on failure
+    })
+
+    // Listen for change events
+    let unlisten: (() => void) | undefined
+    const setupListener = async () => {
+      unlisten = await listen('casebook-changed', () => {
+        scanProject(selectedProject)
+      })
+    }
+    setupListener()
+
+    return () => {
+      unlisten?.()
+    }
+  }, [selectedProject, viewState])
 
   const selectCase = useCallback((caseId: string) => {
     setSelectedCaseId(caseId)

@@ -1,11 +1,14 @@
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
-    time::UNIX_EPOCH,
+    sync::Mutex,
+    time::{Duration, Instant, UNIX_EPOCH},
 };
+use tauri::Emitter;
 
 const DEFAULT_TESTS_ALIAS: &str = "用例库";
 const DEFAULT_CONFIG_CONTENT: &str = r#"tests_alias: 用例库
@@ -210,6 +213,8 @@ fn scan_casebook(project_root: String) -> AppResult<ScanResult> {
     collect_markdown_files(&tests_root, &mut markdown_files, &mut result.errors);
     markdown_files.sort();
 
+    let git_timestamps = batch_git_timestamps(&project_root_path, &markdown_files);
+
     for file_path in markdown_files {
         let absolute_path = file_path.to_string_lossy().into_owned();
         let relative_path = match file_path.strip_prefix(&tests_root) {
@@ -237,8 +242,12 @@ fn scan_casebook(project_root: String) -> AppResult<ScanResult> {
             }
         };
 
-        let created_at = git_created_at(&project_root_path, &file_path);
-        let (updated_at, updated_at_source) = get_updated_at(&project_root_path, &file_path);
+        let timestamps = git_timestamps.get(&file_path);
+        let created_at = timestamps.and_then(|t| t.created_at);
+        let (updated_at, updated_at_source) = match timestamps.and_then(|t| t.updated_at) {
+            Some(ts) => (Some(ts), UpdatedAtSource::Git),
+            None => (filesystem_updated_at(&file_path), UpdatedAtSource::Filesystem),
+        };
 
         result.cases.push(ScannedCase {
             case_id,
@@ -311,6 +320,62 @@ fn update_case_status(
     })
 }
 
+struct WatcherState {
+    watcher: Option<RecommendedWatcher>,
+}
+
+#[tauri::command]
+fn watch_casebook(project_root: String, state: tauri::State<'_, Mutex<WatcherState>>, app: tauri::AppHandle) -> AppResult<()> {
+    let tests_root = PathBuf::from(&project_root).join("casebook").join("tests");
+    if !tests_root.is_dir() {
+        return Err(app_error("watch.tests_not_found"));
+    }
+
+    let mut guard = state.lock().map_err(|_| app_error("watch.lock_failed"))?;
+
+    // Stop existing watcher
+    guard.watcher = None;
+
+    let last_emit = std::sync::Arc::new(Mutex::new(Instant::now() - Duration::from_secs(10)));
+    let app_handle = app.clone();
+    let debounce_duration = Duration::from_millis(500);
+
+    let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+        if let Ok(event) = res {
+            let dominated_by_md = event.paths.iter().any(|p| {
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("yml"))
+                    .unwrap_or(false)
+            });
+            if !dominated_by_md {
+                return;
+            }
+            if let Ok(mut last) = last_emit.lock() {
+                if last.elapsed() < debounce_duration {
+                    return;
+                }
+                *last = Instant::now();
+            }
+            let _ = app_handle.emit("casebook-changed", ());
+        }
+    })
+    .map_err(|e| app_error_with_detail("watch.create_failed", e.to_string()))?;
+
+    watcher
+        .watch(&tests_root, RecursiveMode::Recursive)
+        .map_err(|e| app_error_with_detail("watch.start_failed", e.to_string()))?;
+
+    // Also watch config.yml
+    let config_path = PathBuf::from(&project_root).join("casebook").join("config.yml");
+    if config_path.is_file() {
+        let _ = watcher.watch(&config_path, RecursiveMode::NonRecursive);
+    }
+
+    guard.watcher = Some(watcher);
+    Ok(())
+}
+
 fn collect_markdown_files(root: &Path, files: &mut Vec<PathBuf>, errors: &mut Vec<ScanError>) {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
@@ -354,6 +419,72 @@ fn collect_markdown_files(root: &Path, files: &mut Vec<PathBuf>, errors: &mut Ve
             files.push(path);
         }
     }
+}
+
+struct GitTimestamps {
+    created_at: Option<u64>,
+    updated_at: Option<u64>,
+}
+
+fn batch_git_timestamps(project_root: &Path, files: &[PathBuf]) -> std::collections::HashMap<PathBuf, GitTimestamps> {
+    let mut result = std::collections::HashMap::new();
+    if files.is_empty() {
+        return result;
+    }
+
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(project_root)
+        .args(["log", "--format=__CB__%ct", "--name-only", "--"]);
+
+    for file in files {
+        if let Ok(rel) = file.strip_prefix(project_root) {
+            cmd.arg(rel);
+        }
+    }
+
+    let output = match cmd.output() {
+        Ok(o) if o.status.success() => o,
+        _ => return result,
+    };
+
+    let stdout = match String::from_utf8(output.stdout) {
+        Ok(s) => s,
+        Err(_) => return result,
+    };
+
+    let mut current_timestamp: Option<u64> = None;
+
+    for line in stdout.lines() {
+        if let Some(ts_str) = line.strip_prefix("__CB__") {
+            current_timestamp = ts_str.trim().parse::<u64>().ok();
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Some(ts) = current_timestamp {
+            let file_path = project_root.join(trimmed);
+            let entry = result.entry(file_path).or_insert(GitTimestamps {
+                created_at: None,
+                updated_at: None,
+            });
+
+            let ts_ms = ts.saturating_mul(1000);
+
+            // First encounter = most recent commit (updated_at)
+            if entry.updated_at.is_none() {
+                entry.updated_at = Some(ts_ms);
+            }
+            // Keep overwriting created_at to end up with the oldest
+            entry.created_at = Some(ts_ms);
+        }
+    }
+
+    result
 }
 
 fn get_updated_at(project_root: &Path, file_path: &Path) -> (Option<u64>, UpdatedAtSource) {
@@ -807,6 +938,7 @@ statuses:
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(Mutex::new(WatcherState { watcher: None }))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -817,7 +949,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![scan_casebook, update_case_status])
+        .invoke_handler(tauri::generate_handler![scan_casebook, update_case_status, watch_casebook])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
