@@ -1613,7 +1613,7 @@ code {
 }
 
 .status-dot[data-active='true'] {
-  border-color: white;
+  border-color: #000000;
 }
 
 .status-dot[data-active='true']::after {
