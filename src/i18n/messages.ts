@@ -10,7 +10,7 @@ export const messages = {
       chinese: 'Chinese',
     },
     home: {
-      greeting: 'Hello, Welcome to Case Book.',
+      greeting: 'Hello, Welcome to Casebook.',
       heroWord: 'PASS',
       openProjectDirectory: 'Open Project',
       caption: 'Creates casebook/tests when missing and reads the alias from casebook/config.yml.',
@@ -132,7 +132,7 @@ export const messages = {
       chinese: '中文',
     },
     home: {
-      greeting: 'Hello, Welcome to Case Book.',
+      greeting: 'Hello, Welcome to Casebook.',
       heroWord: 'PASS',
       openProjectDirectory: '打开项目',
       caption: '如果缺少 casebook/tests 会自动创建，并从 casebook/config.yml 读取别名。',
