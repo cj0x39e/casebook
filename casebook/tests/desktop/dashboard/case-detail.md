@@ -1,7 +1,7 @@
 ---
 title: Case detail panel renders correctly
 platform: desktop
-status: todo
+status: pass
 priority: P1
 ---
 

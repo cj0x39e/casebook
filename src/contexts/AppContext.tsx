@@ -410,6 +410,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Auto-scan on initial mount if a project was persisted
   const didAutoScanRef = useRef(false)
+const suppressWatchUntilRef = useRef(0)
   useEffect(() => {
     if (didAutoScanRef.current) return
     if (selectedProject === null) return
@@ -430,6 +431,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let unlisten: (() => void) | undefined
     const setupListener = async () => {
       unlisten = await listen('casebook-changed', () => {
+        if (Date.now() < suppressWatchUntilRef.current) return
         scanProject(selectedProject)
       })
     }
@@ -462,6 +464,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       setStatusUpdatePending(nextStatus)
       setStatusUpdateError(null)
+      suppressWatchUntilRef.current = Date.now() + 1500
 
       try {
         const updatedCase = await invoke<RawScannedCase>('update_case_status', {

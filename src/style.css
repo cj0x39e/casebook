@@ -488,16 +488,37 @@ code {
 
 .workspace--dashboard {
   grid-template-rows: auto 1fr auto;
-  border-top: 1px solid #e5e5e5;
 }
 
 .sidebar__top {
   grid-column: 1;
   grid-row: 1;
   padding: 32px 16px 8px;
-  background: #f3f3f3;
+  background-color: transparent;
   border-bottom: 1px solid #e5e5e5;
   min-width: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  position: relative;
+  isolation: isolate;
+}
+
+.sidebar__top::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--sidebar-bg) center / cover no-repeat;
+  filter: grayscale(1);
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.sidebar__top-glass {
+  padding: 8px 16px;
+  margin: 0 -16px;
+  background: rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
@@ -579,6 +600,7 @@ code {
 .sidebar__stats {
   display: flex;
   align-items: flex-end;
+  justify-content: center;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -586,8 +608,9 @@ code {
 .sidebar__stat {
   appearance: none;
   position: relative;
-  border: 1px solid #e5e5e5;
-  background: #ffffff;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 0;
   width: 42px;
   height: 35px;
   display: flex;
@@ -601,7 +624,7 @@ code {
 }
 
 .sidebar__stat[data-active='true'] {
-  border-color: #111111;
+  border-color: white;
 }
 
 .sidebar__stat-count {
@@ -611,15 +634,15 @@ code {
 }
 
 .sidebar__stat[data-status='pass'] .sidebar__stat-count {
-  color: #2fda00;
+  color: white;
 }
 
 .sidebar__stat[data-status='blocked'] .sidebar__stat-count {
-  color: #ff0004;
+  color: white;
 }
 
 .sidebar__stat[data-status='todo'] .sidebar__stat-count {
-  color: #FFD400;
+  color: white;
 }
 
 .sidebar__stat-meta {
@@ -628,7 +651,7 @@ code {
   gap: 4px;
   font-size: 0.58rem;
   line-height: 1;
-  color: #6e6e6e;
+  color: white;
 }
 
 .sidebar__stat-swatch {
@@ -640,9 +663,10 @@ code {
 .sidebar__filter-button {
   appearance: none;
   position: relative;
-  border: 1px solid #bfbaba;
-  background: #d9d9d9;
-  color: #bfbaba;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 0;
+  color: white;
   width: 42px;
   height: 35px;
   display: inline-flex;
@@ -655,34 +679,37 @@ code {
 
 .sidebar__filter-button:hover,
 .sidebar__filter-button:focus-visible {
-  border-color: #8f8a8a;
-  color: #8f8a8a;
+  border-color: white;
+  color: white;
   outline: none;
 }
 
 .sidebar__filter-button[data-active='true'] {
-  border-color: #111111;
-  color: #111111;
+  border-color: white;
+  color: white;
 }
 
 .sidebar__priorities {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 8px;
 }
 
 .sidebar__priority-dot-filter {
   appearance: none;
-  min-width: 28px;
-  border: 1px solid #e5e5e5;
-  background: #ffffff;
+  width: 42px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 0;
   padding: 3px 6px;
   cursor: pointer;
   transition: border-color 160ms ease, background-color 160ms ease;
   display: inline-flex;
   align-items: baseline;
-  justify-content: center;
-  color: #333;
+  justify-content: flex-start;
+  color: rgba(255, 255, 255, 0.9);
+  --priority-color: #ececec;
 }
 
 .sidebar__priority-dot-count {
@@ -696,7 +723,7 @@ code {
   font-weight: 500;
   line-height: 1;
   text-transform: uppercase;
-  color: #999;
+  color: white;
   vertical-align: sub;
   margin-left: 1px;
 }
@@ -706,7 +733,7 @@ code {
 }
 
 .sidebar__priority-dot-filter[data-active='true'] {
-  border-color: #111111;
+  border-color: white;
 }
 
 .tree-panel.tree-panel--card {
@@ -1234,16 +1261,11 @@ code {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  font-size: clamp(1.1rem, 1.1vw + 0.9rem, 1.5rem);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 1.1rem;
   font-weight: 500;
   line-height: 1.2;
-  max-height: calc(1.2em * 2);
   letter-spacing: -0.02em;
 }
 
@@ -1259,9 +1281,10 @@ code {
   display: flex;
   align-items: center;
   gap: 24px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   font-size: 0.9rem;
   min-width: 0;
+  overflow: hidden;
 }
 
 .detail-header__priority {
@@ -1272,7 +1295,7 @@ code {
 }
 
 .detail-header__priority-text {
-  font-size: 1rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: #111111;
   line-height: 1;
@@ -1590,7 +1613,7 @@ code {
 }
 
 .status-dot[data-active='true'] {
-  border-color: #000000;
+  border-color: white;
 }
 
 .status-dot[data-active='true']::after {

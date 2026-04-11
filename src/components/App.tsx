@@ -22,6 +22,7 @@ import appIcon from '../../src-tauri/icons/128x128.png'
 import goIcon from '../assets/go.svg'
 import passWordmark from '../assets/PASS.svg'
 import settingIcon from '../assets/setting.svg'
+import leftBg from '../assets/left_bg.png'
 import { useAppVersion } from '../lib/appVersion'
 
 const markdownRenderer = new MarkdownIt({
@@ -286,7 +287,8 @@ export function App() {
 
           {viewState === 'ready' ? (
             <main className="workspace workspace--dashboard" style={{ '--sidebar-width': `${effectiveSidebarWidth}px` } as CSSProperties}>
-              <div className="sidebar__top">
+              <div className="sidebar__top" style={{ '--sidebar-bg': `url(${leftBg})` } as CSSProperties}>
+                <div className="sidebar__top-glass">
                 <div className="sidebar__stats">
                   {statusConfig.map((config) => (
                     <button
@@ -337,8 +339,8 @@ export function App() {
                     )
                   })}
                 </div>
+                </div>
               </div>
-
               <div
                 className="workspace__resizer"
                 role="separator"

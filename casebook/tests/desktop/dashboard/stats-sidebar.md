@@ -1,7 +1,7 @@
 ---
 title: Sidebar stats panel displays correctly
 platform: desktop
-status: pass
+status: todo
 priority: P1
 ---
 
