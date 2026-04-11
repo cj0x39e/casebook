@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sed *)",
+      "Bash(cargo check)",
+      "Bash(git tag *)"
+    ]
+  },
+  "$version": 3
+}
